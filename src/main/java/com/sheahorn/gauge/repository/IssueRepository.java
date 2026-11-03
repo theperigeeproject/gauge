@@ -42,4 +42,14 @@ public class IssueRepository {
     public void deleteById(String id) {
         Issue.deleteById(id);
     }
+
+    public long countByStatus(String status) {
+        return Issue.count("status", status);
+    }
+
+    /** Rewrites every issue using {@code from} to {@code to}. Used by status rename/delete. */
+    @Transactional
+    public int replaceStatus(String from, String to) {
+        return Issue.update("status = ?1 where status = ?2", to, from);
+    }
 }

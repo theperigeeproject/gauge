@@ -22,6 +22,7 @@ public class Tasklist extends PanacheEntityBase {
     @Column(name = "title", nullable = false)
     public String title;
 
+    /** A code from the configurable TASKLIST status set, not an enum. */
     @Column(name = "status", nullable = false, length = 20)
     public String status;
 
@@ -36,20 +37,25 @@ public class Tasklist extends PanacheEntityBase {
         @JsonProperty("id") String id,
         @JsonProperty("issueId") String issueId,
         @JsonProperty("title") String title,
-        @JsonProperty("status") TasklistStatus status,
+        @JsonProperty("status") String status,
         @JsonProperty("decomposesTaskId") String decomposesTaskId
     ) {
         this.id = id;
         this.issueId = issueId;
         this.title = title;
-        this.status = status.name();
+        this.status = status;
         this.decomposesTaskId = decomposesTaskId;
+    }
+
+    /** Convenience for callers holding a built-in status constant. */
+    public Tasklist(String id, String issueId, String title, TasklistStatus status, String decomposesTaskId) {
+        this(id, issueId, title, status.name(), decomposesTaskId);
     }
 
     public String id() { return id; }
     public String issueId() { return issueId; }
     public String title() { return title; }
-    public TasklistStatus status() { return TasklistStatus.valueOf(status); }
+    public String status() { return status; }
     public String decomposesTaskId() { return decomposesTaskId; }
 
     public static Tasklist create(String issueId, String title, String decomposesTaskId) {
@@ -57,7 +63,7 @@ public class Tasklist extends PanacheEntityBase {
             IdProviderHolder.provider().nextId(),
             issueId,
             title,
-            TasklistStatus.TODO,
+            StatusDefaults.START_CODE,
             decomposesTaskId
         );
     }

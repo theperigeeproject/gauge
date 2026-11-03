@@ -9,8 +9,10 @@ import com.sheahorn.gauge.domain.Tasklist;
 import com.sheahorn.gauge.domain.UpdateIssuePriorityRequest;
 import com.sheahorn.gauge.domain.UpdateIssueStatusRequest;
 import com.sheahorn.gauge.security.ProjectAccessGuard;
+import com.sheahorn.gauge.domain.StatusLevel;
 import com.sheahorn.gauge.service.InputParser;
 import com.sheahorn.gauge.service.IssueService;
+import com.sheahorn.gauge.service.StatusRegistry;
 import com.sheahorn.gauge.service.TasklistService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -36,6 +38,9 @@ public class IssueResource {
 
     @Inject
     InputParser inputParser;
+
+    @Inject
+    StatusRegistry statusRegistry;
 
     @Operation(
         operationId = "tracker_list_issues",
@@ -123,7 +128,8 @@ public class IssueResource {
         if (!accessGuard.canWriteIssue(issueId)) {
             return forbidden();
         }
-        return service.updateStatus(issueId, inputParser.requiredIssueStatus(body.status()))
+        String status = statusRegistry.validate(StatusLevel.ISSUE, body.status());
+        return service.updateStatus(issueId, status)
             .map(issue -> Response.ok(issue).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }

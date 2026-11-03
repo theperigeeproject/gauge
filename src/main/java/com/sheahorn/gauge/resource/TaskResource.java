@@ -3,7 +3,9 @@ package com.sheahorn.gauge.resource;
 import com.sheahorn.gauge.domain.PatchTaskRequest;
 import com.sheahorn.gauge.domain.Task;
 import com.sheahorn.gauge.domain.UpdateTaskStatusRequest;
+import com.sheahorn.gauge.domain.StatusLevel;
 import com.sheahorn.gauge.security.ProjectAccessGuard;
+import com.sheahorn.gauge.service.StatusRegistry;
 import com.sheahorn.gauge.service.TaskService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -23,6 +25,9 @@ public class TaskResource {
 
     @Inject
     ProjectAccessGuard accessGuard;
+
+    @Inject
+    StatusRegistry statusRegistry;
 
     @Operation(
         operationId = "tracker_list_tasks",
@@ -82,7 +87,8 @@ public class TaskResource {
         if (!accessGuard.canWriteTask(taskId)) {
             return forbidden();
         }
-        return service.updateStatus(taskId, body.status())
+        String status = statusRegistry.validate(StatusLevel.TASK, body.status());
+        return service.updateStatus(taskId, status)
             .map(task -> Response.ok(task).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }

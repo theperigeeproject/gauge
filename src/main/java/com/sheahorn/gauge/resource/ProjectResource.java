@@ -3,7 +3,6 @@ package com.sheahorn.gauge.resource;
 import com.sheahorn.gauge.domain.CreateProjectRequest;
 import com.sheahorn.gauge.domain.CreateIssueRequest;
 import com.sheahorn.gauge.domain.Issue;
-import com.sheahorn.gauge.domain.IssueStatus;
 import com.sheahorn.gauge.domain.PatchProjectRequest;
 import com.sheahorn.gauge.domain.Priority;
 import com.sheahorn.gauge.domain.Project;
@@ -11,9 +10,11 @@ import com.sheahorn.gauge.domain.ProjectAnalysisResult;
 import com.sheahorn.gauge.domain.ReparentProjectRequest;
 import com.sheahorn.gauge.domain.SortOption;
 import com.sheahorn.gauge.security.ProjectAccessGuard;
+import com.sheahorn.gauge.domain.StatusLevel;
 import com.sheahorn.gauge.service.InputParser;
 import com.sheahorn.gauge.service.IssueService;
 import com.sheahorn.gauge.service.ProjectAnalysisService;
+import com.sheahorn.gauge.service.StatusRegistry;
 import com.sheahorn.gauge.service.ProjectService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -49,6 +50,9 @@ public class ProjectResource {
 
     @Inject
     InputParser inputParser;
+
+    @Inject
+    StatusRegistry statusRegistry;
 
     @Context
     SecurityContext securityContext;
@@ -108,15 +112,14 @@ public class ProjectResource {
                 .collect(Collectors.toSet());
         }
 
-        Set<IssueStatus> statuses = null;
+        Set<String> statuses = null;
         if (status != null && !status.isBlank()) {
+            // Filtering is a read: unknown codes are dropped rather than rejected, so a
+            // removed status in a saved filter just matches nothing instead of erroring.
             statuses = Arrays.stream(status.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .map(s -> {
-                    try { return IssueStatus.valueOf(s.toUpperCase()); }
-                    catch (IllegalArgumentException e) { return null; }
-                })
+                .map(s -> statusRegistry.definition(StatusLevel.ISSUE, s).map(d -> d.code).orElse(null))
                 .filter(s -> s != null)
                 .collect(Collectors.toSet());
         }

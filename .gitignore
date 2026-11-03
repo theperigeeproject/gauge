@@ -19,3 +19,7 @@ Thumbs.db
 
 #db
 data/
+
+# build output captured to a file (mvn -B test | tee build.log)
+build.log
+*.log

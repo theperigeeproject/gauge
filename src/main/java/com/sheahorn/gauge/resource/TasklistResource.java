@@ -7,7 +7,9 @@ import com.sheahorn.gauge.domain.ReorderTasksRequest;
 import com.sheahorn.gauge.domain.Task;
 import com.sheahorn.gauge.domain.Tasklist;
 import com.sheahorn.gauge.domain.UpdateTasklistStatusRequest;
+import com.sheahorn.gauge.domain.StatusLevel;
 import com.sheahorn.gauge.security.ProjectAccessGuard;
+import com.sheahorn.gauge.service.StatusRegistry;
 import com.sheahorn.gauge.service.TaskService;
 import com.sheahorn.gauge.service.TasklistService;
 import jakarta.inject.Inject;
@@ -32,6 +34,9 @@ public class TasklistResource {
 
     @Inject
     ProjectAccessGuard accessGuard;
+
+    @Inject
+    StatusRegistry statusRegistry;
 
     @Operation(
         operationId = "tracker_list_tasklists",
@@ -132,7 +137,8 @@ public class TasklistResource {
         if (!accessGuard.canWriteTasklist(tasklistId)) {
             return forbidden();
         }
-        return service.updateStatus(tasklistId, body.status())
+        String status = statusRegistry.validate(StatusLevel.TASKLIST, body.status());
+        return service.updateStatus(tasklistId, status)
             .map(tasklist -> Response.ok(tasklist).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }

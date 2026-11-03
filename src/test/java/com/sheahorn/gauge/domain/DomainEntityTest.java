@@ -62,7 +62,7 @@ class DomainEntityTest {
         assertEquals("P0000001", i.projectId());
         assertEquals("Title", i.title());
         assertEquals("Description", i.description());
-        assertEquals(IssueStatus.TODO, i.status());
+        assertEquals("TODO", i.status());
         assertEquals(Priority.HIGH, i.priority());
     }
 
@@ -70,8 +70,8 @@ class DomainEntityTest {
 
     @Test
     void testIssueStatusAndPriorityEnums() {
-        Issue i = new Issue("I0000001", "P0000001", "T", "D", IssueStatus.DOING, Priority.LOW);
-        assertEquals(IssueStatus.DOING, i.status());
+        Issue i = new Issue("I0000001", "P0000001", "T", "D", "DOING", Priority.LOW);
+        assertEquals("DOING", i.status());
         assertEquals(Priority.LOW, i.priority());
     }
 
@@ -88,7 +88,7 @@ class DomainEntityTest {
         assertTrue(tl.id().matches("[0-9A-F]{8}"));
         assertEquals("I0000001", tl.issueId());
         assertEquals("Title", tl.title());
-        assertEquals(TasklistStatus.TODO, tl.status());
+        assertEquals("TODO", tl.status());
         assertEquals("T0000001", tl.decomposesTaskId());
     }
 
@@ -102,8 +102,8 @@ class DomainEntityTest {
 
     @Test
     void testTasklistStatusEnum() {
-        Tasklist tl = new Tasklist("TL000001", "I0000001", "T", TasklistStatus.DOING, null);
-        assertEquals(TasklistStatus.DOING, tl.status());
+        Tasklist tl = new Tasklist("TL000001", "I0000001", "T", "DOING", null);
+        assertEquals("DOING", tl.status());
     }
 
     // ---- 8: Task.create — hex-8 ID, TODO status, correct fields ----
@@ -118,15 +118,15 @@ class DomainEntityTest {
         assertEquals(3, t.ordinal());
         assertEquals("Title", t.title());
         assertEquals("Description", t.description());
-        assertEquals(TaskStatus.TODO, t.status());
+        assertEquals("TODO", t.status());
     }
 
     // ---- 9: Task — status() and ordinal() ----
 
     @Test
     void testTaskStatusEnum() {
-        Task t = new Task("T0000001", "TL000001", 0, "T", "D", TaskStatus.FAILED);
-        assertEquals(TaskStatus.FAILED, t.status());
+        Task t = new Task("T0000001", "TL000001", 0, "T", "D", "FAILED");
+        assertEquals("FAILED", t.status());
         assertEquals(0, t.ordinal());
     }
 

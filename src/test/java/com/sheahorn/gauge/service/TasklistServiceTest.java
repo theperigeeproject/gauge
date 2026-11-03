@@ -72,7 +72,7 @@ class TasklistServiceTest {
         assertNotNull(tl.id());
         assertEquals("I0000001", tl.issueId());
         assertEquals("Test Tasklist", tl.title());
-        assertEquals(TasklistStatus.TODO, tl.status());
+        assertEquals("TODO", tl.status());
         assertNull(tl.decomposesTaskId());
     }
 
@@ -228,33 +228,33 @@ class TasklistServiceTest {
     @Transactional
     void testUpdateStatusToDoing() {
         Tasklist created = createTasklist("I0000001", "Test");
-        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), TasklistStatus.DOING);
+        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), "DOING");
         assertTrue(updated.isPresent());
-        assertEquals(TasklistStatus.DOING, updated.get().status());
+        assertEquals("DOING", updated.get().status());
     }
 
     @Test
     @Transactional
     void testUpdateStatusToDone() {
         Tasklist created = createTasklist("I0000001", "Test");
-        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), TasklistStatus.DONE);
+        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), "DONE");
         assertTrue(updated.isPresent());
-        assertEquals(TasklistStatus.DONE, updated.get().status());
+        assertEquals("DONE", updated.get().status());
     }
 
     @Test
     @Transactional
     void testUpdateStatusToCanceled() {
         Tasklist created = createTasklist("I0000001", "Test");
-        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), TasklistStatus.CANCELED);
+        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), "CANCELED");
         assertTrue(updated.isPresent());
-        assertEquals(TasklistStatus.CANCELED, updated.get().status());
+        assertEquals("CANCELED", updated.get().status());
     }
 
     @Test
     @Transactional
     void testUpdateStatusNotFound() {
-        Optional<Tasklist> updated = tasklistService.updateStatus("NONEXISTENT", TasklistStatus.DOING);
+        Optional<Tasklist> updated = tasklistService.updateStatus("NONEXISTENT", "DOING");
         assertFalse(updated.isPresent());
     }
 
@@ -472,7 +472,7 @@ class TasklistServiceTest {
         Tasklist tl = tasklistService.create("I0000001", "Target", "T0000001");
 
         // Update status — decomposesTaskId should be preserved
-        Optional<Tasklist> updated = tasklistService.updateStatus(tl.id(), TasklistStatus.DOING);
+        Optional<Tasklist> updated = tasklistService.updateStatus(tl.id(), "DOING");
         assertTrue(updated.isPresent());
         assertEquals("T0000001", updated.get().decomposesTaskId());
     }

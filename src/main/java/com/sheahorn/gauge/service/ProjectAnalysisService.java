@@ -11,9 +11,12 @@ import jakarta.inject.Inject;
 import java.util.*;
 
 /**
- * Computes project analysis stats (issue counts, subproject counts,
- * task counts, bubbled priority) for all projects, aggregating
- * recursively across subproject trees.
+ * Computes project analysis stats (status counts, subproject counts, bubbled priority)
+ * for all projects, aggregating recursively across subproject trees.
+ *
+ * <p>Counts are keyed by status code, so new statuses show up as new columns without code
+ * changes. Behaviour (what bubbles, what counts as finished, what is ignored) is decided by
+ * the status's {@link StatusCategory}, never by its code.
  */
 @ApplicationScoped
 public class ProjectAnalysisService {
@@ -29,6 +32,9 @@ public class ProjectAnalysisService {
 
     @Inject
     TaskRepository taskRepository;
+
+    @Inject
+    StatusRegistry statusRegistry;
 
     /**
      * Returns a mutable map of projectId → ProjectAnalysisResult
@@ -80,37 +86,31 @@ public class ProjectAnalysisService {
             Map<String, List<Tasklist>> tasklistsByIssue,
             Map<String, List<Task>> tasksByTasklist) {
 
-        int issueTodo = 0, issueDoing = 0, issueInactive = 0, issueDone = 0;
-        int subprojectCount = 0;
-        int taskTodo = 0, taskDoing = 0;
+        Map<String, Integer> issueCounts = new LinkedHashMap<>();
+        Map<String, Integer> taskCounts = new LinkedHashMap<>();
+        int subprojectCount;
         Priority highestPriority = null;
 
-        // Aggregate this project's direct issues
+        // Aggregate this project's direct issues and their tasks
         List<Issue> directIssues = issuesByProject.getOrDefault(projectId, List.of());
         for (Issue issue : directIssues) {
-            switch (issue.status()) {
-                case TODO -> issueTodo++;
-                case DOING -> issueDoing++;
-                case INACTIVE -> issueInactive++;
-                case DONE -> issueDone++;
-            }
-            // Track highest priority among active (TODO/DOING) issues only.
-            // INACTIVE issues are parked — they demand no attention, so they
-            // neither bubble a priority nor count as finished work.
-            if (issue.status() == IssueStatus.TODO || issue.status() == IssueStatus.DOING) {
-                if (highestPriority == null || issue.priority().severity > highestPriority.severity) {
-                    highestPriority = issue.priority();
+            issueCounts.merge(issue.status(), 1, Integer::sum);
+
+            // Only ACTIVE statuses bubble a priority. PARKED (e.g. INACTIVE) demands no
+            // attention; FINISHED is done and bubbles nothing.
+            StatusCategory category = statusRegistry.category(StatusLevel.ISSUE, issue.status());
+            if (category == StatusCategory.ACTIVE) {
+                Priority p = issue.priority();
+                if (highestPriority == null || p.severity > highestPriority.severity) {
+                    highestPriority = p;
                 }
             }
-            // Aggregate tasks for this issue
+
             List<Tasklist> tasklists = tasklistsByIssue.getOrDefault(issue.id(), List.of());
             for (Tasklist tl : tasklists) {
                 List<Task> tasks = tasksByTasklist.getOrDefault(tl.id(), List.of());
                 for (Task t : tasks) {
-                    switch (t.status()) {
-                        case TODO -> taskTodo++;
-                        case DOING -> taskDoing++;
-                    }
+                    taskCounts.merge(t.status(), 1, Integer::sum);
                 }
             }
         }
@@ -121,13 +121,9 @@ public class ProjectAnalysisService {
         for (Project child : children) {
             ProjectAnalysisResult childResult = computeRecursive(child.id(),
                 childrenByParent, issuesByProject, tasklistsByIssue, tasksByTasklist);
-            issueTodo += childResult.issueTodo;
-            issueDoing += childResult.issueDoing;
-            issueInactive += childResult.issueInactive;
-            issueDone += childResult.issueDone;
+            childResult.issueCounts.forEach((code, count) -> issueCounts.merge(code, count, Integer::sum));
+            childResult.taskCounts.forEach((code, count) -> taskCounts.merge(code, count, Integer::sum));
             subprojectCount += childResult.subprojectCount;
-            taskTodo += childResult.taskTodo;
-            taskDoing += childResult.taskDoing;
             // Merge highest priority from child (only real priorities bubble)
             if (childResult.bubbledPriority != BubbledPriority.NONE
                 && childResult.bubbledPriority != BubbledPriority.DONE
@@ -144,23 +140,31 @@ public class ProjectAnalysisService {
             }
         }
 
-        BubbledPriority bp = computeBubbledPriority(
-            issueTodo + issueDoing, issueInactive, issueDone, highestPriority);
-        return new ProjectAnalysisResult(issueTodo, issueDoing, issueInactive, issueDone,
-            subprojectCount, taskTodo, taskDoing, bp);
+        BubbledPriority bp = computeBubbledPriority(issueCounts, highestPriority);
+        return new ProjectAnalysisResult(issueCounts, taskCounts, subprojectCount, bp);
     }
 
     /**
-     * Bubbled priority resolution:
-     * 1. nothing at all                   → NONE
-     * 2. any active issue                 → highest active priority (LOW/NORMAL/HIGH)
-     * 3. no active, some DONE             → DONE
-     * 4. no active, only parked INACTIVE  → INACTIVE
+     * Bubbled priority resolution, driven by status categories:
+     * 1. no issues at all            → NONE
+     * 2. any ACTIVE issue            → highest active priority (LOW/NORMAL/HIGH)
+     * 3. no active, some FINISHED    → DONE
+     * 4. no active, only PARKED      → INACTIVE
      */
-    private BubbledPriority computeBubbledPriority(int activeCount, int inactiveCount,
-                                                   int doneCount, Priority highestPriority) {
-        if (activeCount == 0 && inactiveCount == 0 && doneCount == 0) return BubbledPriority.NONE;
-        if (activeCount > 0) {
+    private BubbledPriority computeBubbledPriority(Map<String, Integer> issueCounts,
+                                                   Priority highestPriority) {
+        int active = 0, finished = 0, parked = 0;
+        for (Map.Entry<String, Integer> entry : issueCounts.entrySet()) {
+            if (entry.getValue() == null || entry.getValue() == 0) continue;
+            switch (statusRegistry.category(StatusLevel.ISSUE, entry.getKey())) {
+                case ACTIVE -> active += entry.getValue();
+                case FINISHED -> finished += entry.getValue();
+                case PARKED -> parked += entry.getValue();
+            }
+        }
+
+        if (active == 0 && finished == 0 && parked == 0) return BubbledPriority.NONE;
+        if (active > 0) {
             if (highestPriority == null) return BubbledPriority.NONE;
             return switch (highestPriority) {
                 case HIGH -> BubbledPriority.HIGH;
@@ -168,7 +172,7 @@ public class ProjectAnalysisService {
                 case LOW -> BubbledPriority.LOW;
             };
         }
-        if (doneCount > 0) return BubbledPriority.DONE;
+        if (finished > 0) return BubbledPriority.DONE;
         return BubbledPriority.INACTIVE;
     }
 }

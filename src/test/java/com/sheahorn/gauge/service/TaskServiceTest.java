@@ -39,7 +39,7 @@ class TaskServiceTest {
         return taskService.create(tasklistId, title, "desc");
     }
 
-    private Task createTaskDirect(String id, String tasklistId, int ordinal, String title, TaskStatus status) {
+    private Task createTaskDirect(String id, String tasklistId, int ordinal, String title, String status) {
         Task t = new Task(id, tasklistId, ordinal, title, "desc", status);
         taskRepository.save(t);
         return t;
@@ -56,7 +56,7 @@ class TaskServiceTest {
         assertEquals("TL000001", task.tasklistId());
         assertEquals("Test Task", task.title());
         assertEquals("Description", task.description());
-        assertEquals(TaskStatus.TODO, task.status());
+        assertEquals("TODO", task.status());
         assertEquals(0, task.ordinal());
     }
 
@@ -108,9 +108,9 @@ class TaskServiceTest {
     @Test
     @Transactional
     void testFindByTasklistIdReturnsAllTasks() {
-        createTaskDirect("T0000001", "TL000001", 2, "Third", TaskStatus.TODO);
-        createTaskDirect("T0000002", "TL000001", 0, "First", TaskStatus.TODO);
-        createTaskDirect("T0000003", "TL000001", 1, "Second", TaskStatus.TODO);
+        createTaskDirect("T0000001", "TL000001", 2, "Third", "TODO");
+        createTaskDirect("T0000002", "TL000001", 0, "First", "TODO");
+        createTaskDirect("T0000003", "TL000001", 1, "Second", "TODO");
 
         List<Task> tasks = taskService.findByTasklistId("TL000001");
         assertEquals(3, tasks.size());
@@ -182,36 +182,36 @@ class TaskServiceTest {
     @Transactional
     void testUpdateStatusToDoing() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.DOING);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "DOING");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.DOING, updated.get().status());
+        assertEquals("DOING", updated.get().status());
     }
 
     @Test
     @Transactional
     void testUpdateStatusToDone() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.DONE);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "DONE");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.DONE, updated.get().status());
+        assertEquals("DONE", updated.get().status());
     }
 
     @Test
     @Transactional
     void testUpdateStatusToFailed() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.FAILED);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "FAILED");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.FAILED, updated.get().status());
+        assertEquals("FAILED", updated.get().status());
     }
 
     @Test
     @Transactional
     void testUpdateStatusToCanceled() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.CANCELED);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "CANCELED");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.CANCELED, updated.get().status());
+        assertEquals("CANCELED", updated.get().status());
     }
 
     // ---- 7: reorder — reassigns ordinals 0,1,2... based on provided ID list ----
@@ -274,7 +274,7 @@ class TaskServiceTest {
     @Test
     @Transactional
     void testUpdateStatusNotFound() {
-        Optional<Task> updated = taskService.updateStatus("NONEXISTENT", TaskStatus.DOING);
+        Optional<Task> updated = taskService.updateStatus("NONEXISTENT", "DOING");
         assertFalse(updated.isPresent());
     }
 
@@ -332,7 +332,7 @@ class TaskServiceTest {
     @Test
     @Transactional
     void testSearchNullDescriptionNoNpe() {
-        Task t = new Task("T0000001", "TL000001", 0, "Match", null, TaskStatus.TODO);
+        Task t = new Task("T0000001", "TL000001", 0, "Match", null, "TODO");
         taskRepository.save(t);
 
         List<Task> results = taskService.search("match");

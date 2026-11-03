@@ -27,6 +27,7 @@ public class Issue extends PanacheEntityBase {
     @Column(name = "description", length = 1000000)
     public String description;
 
+    /** A code from the configurable ISSUE status set (status_definitions), not an enum. */
     @Column(name = "status", nullable = false, length = 20)
     public String status;
 
@@ -42,22 +43,28 @@ public class Issue extends PanacheEntityBase {
         @JsonProperty("projectId") String projectId,
         @JsonProperty("title") String title,
         @JsonProperty("description") String description,
-        @JsonProperty("status") IssueStatus status,
+        @JsonProperty("status") String status,
         @JsonProperty("priority") Priority priority
     ) {
         this.id = id;
         this.projectId = projectId;
         this.title = title;
         this.description = description;
-        this.status = status.name();
+        this.status = status;
         this.priority = priority.name();
+    }
+
+    /** Convenience for callers holding a built-in status constant. */
+    public Issue(String id, String projectId, String title, String description,
+                 IssueStatus status, Priority priority) {
+        this(id, projectId, title, description, status.name(), priority);
     }
 
     public String id() { return id; }
     public String projectId() { return projectId; }
     public String title() { return title; }
     public String description() { return description; }
-    public IssueStatus status() { return IssueStatus.valueOf(status); }
+    public String status() { return status; }
     public Priority priority() { return Priority.valueOf(priority); }
 
     public static Issue create(String projectId, String title, String description, Priority priority) {
@@ -66,7 +73,7 @@ public class Issue extends PanacheEntityBase {
             projectId,
             title,
             description,
-            IssueStatus.TODO,
+            StatusDefaults.START_CODE,
             priority
         );
     }

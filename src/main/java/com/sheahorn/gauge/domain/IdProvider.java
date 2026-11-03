@@ -64,7 +64,7 @@ public class IdProvider {
         counter.set(0);
 
         // Tables managed by IdProvider (User and ApiKey stay on UUID)
-        String[] tables = {"projects", "issues", "tasklists", "tasks"};
+        String[] tables = {"projects", "issues", "tasklists", "tasks", "status_definitions"};
         long maxFound = 0;
 
         for (String table : tables) {

@@ -1,7 +1,6 @@
 package com.sheahorn.gauge.service;
 
 import com.sheahorn.gauge.domain.Task;
-import com.sheahorn.gauge.domain.TaskStatus;
 import com.sheahorn.gauge.repository.TaskRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -58,7 +57,7 @@ public class TaskService {
     }
 
     @Transactional
-    public Optional<Task> updateStatus(String id, TaskStatus status) {
+    public Optional<Task> updateStatus(String id, String status) {
         return repository.findById(id).map(existing -> {
             Task updated = new Task(
                 existing.id(),

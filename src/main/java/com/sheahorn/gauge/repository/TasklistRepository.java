@@ -41,4 +41,14 @@ public class TasklistRepository {
     public void deleteById(String id) {
         Tasklist.deleteById(id);
     }
+
+    public long countByStatus(String status) {
+        return Tasklist.count("status", status);
+    }
+
+    /** Rewrites every tasklist using {@code from} to {@code to}. Used by status rename/delete. */
+    @Transactional
+    public int replaceStatus(String from, String to) {
+        return Tasklist.update("status = ?1 where status = ?2", to, from);
+    }
 }

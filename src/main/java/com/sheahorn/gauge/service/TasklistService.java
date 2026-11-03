@@ -2,7 +2,6 @@ package com.sheahorn.gauge.service;
 
 import com.sheahorn.gauge.domain.Task;
 import com.sheahorn.gauge.domain.Tasklist;
-import com.sheahorn.gauge.domain.TasklistStatus;
 import com.sheahorn.gauge.repository.TasklistRepository;
 import com.sheahorn.gauge.repository.TaskRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -61,7 +60,7 @@ public class TasklistService {
     }
 
     @Transactional
-    public Optional<Tasklist> updateStatus(String id, TasklistStatus status) {
+    public Optional<Tasklist> updateStatus(String id, String status) {
         return repository.findById(id).map(existing -> {
             Tasklist updated = new Tasklist(
                 existing.id(),

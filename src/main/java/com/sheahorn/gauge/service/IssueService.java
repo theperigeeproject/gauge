@@ -2,9 +2,9 @@ package com.sheahorn.gauge.service;
 
 import com.sheahorn.gauge.config.IssueDescriptionPolicy;
 import com.sheahorn.gauge.domain.Issue;
-import com.sheahorn.gauge.domain.IssueStatus;
 import com.sheahorn.gauge.domain.Priority;
 import com.sheahorn.gauge.domain.SortOption;
+import com.sheahorn.gauge.domain.StatusLevel;
 import com.sheahorn.gauge.repository.IssueRepository;
 import com.sheahorn.gauge.repository.TasklistRepository;
 import com.sheahorn.gauge.repository.TaskRepository;
@@ -32,6 +32,9 @@ public class IssueService {
     @Inject
     IssueDescriptionPolicy descriptionPolicy;
 
+    @Inject
+    StatusRegistry statusRegistry;
+
     @Transactional
     public Issue create(String projectId, String title, String description, Priority priority) {
         // Both write paths funnel through here, so the length contract cannot diverge again.
@@ -56,7 +59,7 @@ public class IssueService {
         String projectId,
         SortOption sort,
         Set<Priority> priorities,
-        Set<IssueStatus> statuses
+        Set<String> statuses
     ) {
         List<Issue> issues = repository.findByProjectId(projectId);
 
@@ -119,13 +122,9 @@ public class IssueService {
         return 2 - p.severity;
     }
 
-    private int statusOrder(IssueStatus s) {
-        return switch (s) {
-            case TODO -> 0;
-            case DOING -> 1;
-            case DONE -> 2;
-            case INACTIVE -> 3;
-        };
+    /** Status ordering comes from the configured rank, so new statuses slot in naturally. */
+    private int statusOrder(String code) {
+        return statusRegistry.rank(StatusLevel.ISSUE, code);
     }
 
     public List<Issue> search(String q) {
@@ -153,7 +152,7 @@ public class IssueService {
     }
 
     @Transactional
-    public Optional<Issue> updateStatus(String id, IssueStatus status) {
+    public Optional<Issue> updateStatus(String id, String status) {
         return repository.findById(id).map(existing -> {
             Issue updated = new Issue(
                 existing.id(),
