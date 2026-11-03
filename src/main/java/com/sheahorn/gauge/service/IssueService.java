@@ -1,5 +1,6 @@
 package com.sheahorn.gauge.service;
 
+import com.sheahorn.gauge.config.IssueDescriptionPolicy;
 import com.sheahorn.gauge.domain.Issue;
 import com.sheahorn.gauge.domain.IssueStatus;
 import com.sheahorn.gauge.domain.Priority;
@@ -28,8 +29,13 @@ public class IssueService {
     @Inject
     TaskRepository taskRepository;
 
+    @Inject
+    IssueDescriptionPolicy descriptionPolicy;
+
     @Transactional
     public Issue create(String projectId, String title, String description, Priority priority) {
+        // Both write paths funnel through here, so the length contract cannot diverge again.
+        descriptionPolicy.validate(description);
         Issue issue = Issue.create(projectId, title, description, priority);
         return repository.save(issue);
     }
@@ -132,6 +138,7 @@ public class IssueService {
 
     @Transactional
     public Optional<Issue> patch(String id, String title, String description) {
+        descriptionPolicy.validate(description);
         return repository.findById(id).map(existing -> {
             Issue updated = new Issue(
                 existing.id(),

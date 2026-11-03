@@ -54,6 +54,7 @@ All settings live in `application.properties`. The minimal viable set:
 | `gauge.api-key.pepper` | Pepper for hashing user-created API keys |
 | `gauge.auth.enabled` | Toggle for the SecurityFilter (default `true`). Set to `false` to disable Bearer token enforcement entirely. |
 | `gauge.auth.admin.username` / `.password` | Seeded admin user for the browser UI |
+| `gauge.issue.description.allow-long` | `false` (default) caps issue descriptions at 4000 characters; `true` lifts the cap to the database width (1 000 000). Both create and update enforce the same limit and answer `400 DESCRIPTION_TOO_LONG` naming it. |
 | `quarkus.http.port` | HTTP listen port |
 | `quarkus.hibernate-orm.database.generation` | Hibernate DDL value |
 
@@ -127,6 +128,8 @@ CRUD, search (`?q=`), list by parent (`?parentId=`), flat list (`?flat=true`), l
 ### Issues (`/api/issues`, `/api/projects/{id}/issues`)
 
 CRUD, search, sort (`?sort=NAME|PRIORITY_STATUS_NAME|...`), filter by priority and status (`?priority=HIGH&status=TODO,INACTIVE`), move to another project, cascade delete. Statuses: `TODO`, `DOING`, `DONE`, `INACTIVE` — see [Statuses](#statuses).
+
+Create and update validate their input: an unknown priority or status is rejected with `400 INVALID_PRIORITY` / `400 INVALID_STATUS` naming the valid values, and an over-long description with `400 DESCRIPTION_TOO_LONG` naming the limit (see `gauge.issue.description.allow-long`). Nothing is silently coerced or dropped.
 
 ### Tasklists (`/api/tasklists`, `/api/issues/{id}/tasklists`)
 

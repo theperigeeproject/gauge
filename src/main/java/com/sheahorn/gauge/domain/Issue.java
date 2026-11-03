@@ -22,7 +22,9 @@ public class Issue extends PanacheEntityBase {
     @Column(name = "title", nullable = false)
     public String title;
 
-    @Column(name = "description", length = 4000)
+    // Width matches IssueDescriptionPolicy.HARD_MAX_LENGTH — the app-level cap is the real limit,
+    // the column must never be the thing that fails a request.
+    @Column(name = "description", length = 1000000)
     public String description;
 
     @Column(name = "status", nullable = false, length = 20)

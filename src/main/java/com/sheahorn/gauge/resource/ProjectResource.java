@@ -11,6 +11,7 @@ import com.sheahorn.gauge.domain.ProjectAnalysisResult;
 import com.sheahorn.gauge.domain.ReparentProjectRequest;
 import com.sheahorn.gauge.domain.SortOption;
 import com.sheahorn.gauge.security.ProjectAccessGuard;
+import com.sheahorn.gauge.service.InputParser;
 import com.sheahorn.gauge.service.IssueService;
 import com.sheahorn.gauge.service.ProjectAnalysisService;
 import com.sheahorn.gauge.service.ProjectService;
@@ -46,6 +47,9 @@ public class ProjectResource {
     @Inject
     ProjectAccessGuard accessGuard;
 
+    @Inject
+    InputParser inputParser;
+
     @Context
     SecurityContext securityContext;
 
@@ -59,7 +63,10 @@ public class ProjectResource {
         if (!accessGuard.canWriteProject(projectId)) {
             return forbidden();
         }
-        Priority priority = body.priority() != null ? body.priority() : Priority.NORMAL;
+        Priority priority = inputParser.priority(body.priority());
+        if (priority == null) {
+            priority = Priority.NORMAL;
+        }
         Issue issue = issueService.create(projectId, body.title(), body.description(), priority);
         return Response.status(Response.Status.CREATED).entity(issue).build();
     }
