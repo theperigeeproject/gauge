@@ -1,5 +1,10 @@
 # FR 2: Status Lifecycles for Entities
 
+> **Superseded by [FR 6: Configurable Statuses](0019-fr-configurable-statuses.md).**
+> Statuses are now runtime data, configurable per level by an admin. The semantics below
+> still describe the *seeded defaults* and remain the contract for what a status in each
+> category must mean. The fixed enum sets are gone.
+
 ## Scope
 Each entity level has an appropriate status enum reflecting its role in the model.
 

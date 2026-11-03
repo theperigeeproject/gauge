@@ -103,9 +103,17 @@
         return '<span class="' + cls + '">' + esc(bp) + '</span>';
     }
 
-    function statCell(val, colorClass) {
+    function isActive(d) {
+        return d.category === 'ACTIVE';
+    }
+
+    /** Coloured when non-zero; status colour comes from the definition. */
+    function statCell(val, kind, color) {
         if (!val || val === 0) return '<span class="muted">0</span>';
-        return '<strong style="color:var(--' + colorClass + ');">' + val + '</strong>';
+        if (kind === 'status') {
+            return '<strong style="color:' + (color || 'var(--text)') + ';">' + val + '</strong>';
+        }
+        return '<strong style="color:var(--' + kind + ');">' + val + '</strong>';
     }
 
     function renderTree(children, parentId, depth) {
@@ -141,13 +149,18 @@
             html += '<a href="/ui/projects/' + esc(p.id) + '"><strong>' + esc(name) + '</strong></a>';
             html += '</div>';
             html += '<div class="tree-cell-prio">' + bpPill(a.bubbledPriority) + '</div>';
-            html += '<div class="tree-cell-stat">' + statCell(a.issueTodo, 'todo') + '</div>';
-            html += '<div class="tree-cell-stat">' + statCell(a.issueDoing, 'doing') + '</div>';
-            html += '<div class="tree-cell-stat">' + statCell(a.issueDone, 'done') + '</div>';
-            html += '<div class="tree-cell-stat">' + statCell(a.issueInactive, 'inactive') + '</div>';
+            // Issue counters: one column per configured ISSUE status (dynamic width).
+            GaugeStatus.list('ISSUE').forEach(function(d) {
+                html += '<div class="tree-cell-stat">'
+                    + statCell((a.issueCounts || {})[d.code], 'status', d.color) + '</div>';
+            });
             html += '<div class="tree-cell-stat">' + statCell(a.subprojectCount, 'text') + '</div>';
-            html += '<div class="tree-cell-stat">' + statCell(a.taskTodo, 'todo') + '</div>';
-            html += '<div class="tree-cell-stat">' + statCell(a.taskDoing, 'doing') + '</div>';
+            // Task counters: ACTIVE task statuses only — the interesting ones (todo, doing).
+            // Showing every task status would make the already-wide table unusable.
+            GaugeStatus.list('TASK').filter(isActive).forEach(function(d) {
+                html += '<div class="tree-cell-stat">'
+                    + statCell((a.taskCounts || {})[d.code], 'status', d.color) + '</div>';
+            });
             html += '<div class="tree-cell-action" style="display:flex;gap:4px;justify-content:flex-end;">';
             html += '<button class="btn btn-small set-working-btn" data-project-id="' + esc(p.id) + '" title="Set as working project">📌</button>';
             html += '<a href="/ui/projects/' + esc(p.id) + '" class="btn btn-small">View</a>';
@@ -195,13 +208,18 @@
         html += '<div class="tree-cell-icon"></div>';
         html += '<div class="tree-cell-name">Name</div>';
         html += '<div class="tree-cell-prio" title="Bubbled priority"><span class="th-line">Prio</span></div>';
-        html += '<div class="tree-cell-stat" title="Issues TODO (recursive)"><span class="th-line">issues</span><span class="th-line">todo</span></div>';
-        html += '<div class="tree-cell-stat" title="Issues DOING (recursive)"><span class="th-line">issues</span><span class="th-line">doing</span></div>';
-        html += '<div class="tree-cell-stat" title="Issues DONE (recursive)"><span class="th-line">issues</span><span class="th-line">done</span></div>';
-        html += '<div class="tree-cell-stat" title="Issues INACTIVE (recursive)"><span class="th-line">issues</span><span class="th-line">inactive</span></div>';
+        // Header is generated from the same config as the cells, so they can never drift.
+        GaugeStatus.list('ISSUE').forEach(function(d) {
+            html += '<div class="tree-cell-stat" title="' + esc(d.label) + ' issues (recursive)">'
+                + '<span class="th-line">issues</span>'
+                + '<span class="th-line" style="color:' + d.color + ';">' + esc(d.label.toLowerCase()) + '</span></div>';
+        });
         html += '<div class="tree-cell-stat" title="Subprojects (recursive)"><span class="th-line">subs</span></div>';
-        html += '<div class="tree-cell-stat" title="Tasks TODO (recursive)"><span class="th-line">tasks</span><span class="th-line">todo</span></div>';
-        html += '<div class="tree-cell-stat" title="Tasks DOING (recursive)"><span class="th-line">tasks</span><span class="th-line">doing</span></div>';
+        GaugeStatus.list('TASK').filter(isActive).forEach(function(d) {
+            html += '<div class="tree-cell-stat" title="' + esc(d.label) + ' tasks (recursive)">'
+                + '<span class="th-line">tasks</span>'
+                + '<span class="th-line" style="color:' + d.color + ';">' + esc(d.label.toLowerCase()) + '</span></div>';
+        });
         html += '<div class="tree-cell-action"></div>';
         html += '</div>';
         html += renderTree(children, renderRoot, 0);
@@ -265,6 +283,8 @@
                 favoriteIds = await favRes.json();
             }
             loadBookmarkIds();
+            // Column layout comes from the status config, so load it before rendering.
+            await GaugeStatus.load();
             renderAll();
         } catch(e) {
             document.getElementById('projects-list').innerHTML = '<div class="muted">Error loading projects</div>';

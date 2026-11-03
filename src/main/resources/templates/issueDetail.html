@@ -30,10 +30,7 @@
                     <div class="form-group">
                         <label>Status</label>
                         <select id="status-select">
-                            <option value="TODO">TODO</option>
-                            <option value="DOING">DOING</option>
-                            <option value="DONE">DONE</option>
-                            <option value="INACTIVE">INACTIVE</option>
+                            <option value="">Loading&hellip;</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -69,8 +66,7 @@
     function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
     function statusPill(status) {
-        var cls = 'pill pill-' + status.toLowerCase();
-        return '<span class="' + cls + '">' + esc(status) + '</span>';
+        return GaugeStatus.pill('ISSUE', status);
     }
 
     function priorityPill(priority) {
@@ -272,10 +268,10 @@
 
             var taskCounts = {};
             allTasks.forEach(function(t) {
-                if (!taskCounts[t.tasklistId]) taskCounts[t.tasklistId] = {total:0, todo:0, doing:0, done:0, failed:0, canceled:0};
+                if (!taskCounts[t.tasklistId]) taskCounts[t.tasklistId] = {total:0, byStatus:{}};
                 taskCounts[t.tasklistId].total++;
-                var s = t.status ? t.status.toLowerCase() : '';
-                if (taskCounts[t.tasklistId][s] !== undefined) taskCounts[t.tasklistId][s]++;
+                var s = t.status || '';
+                taskCounts[t.tasklistId].byStatus[s] = (taskCounts[t.tasklistId].byStatus[s] || 0) + 1;
             });
 
             var container = document.getElementById('tasklists-list');
@@ -287,16 +283,19 @@
                 + '<th>Title</th><th>Status</th><th>Tasks</th><th></th>'
                 + '</tr></thead><tbody>';
             tasklists.forEach(function(tl) {
-                var tc = taskCounts[tl.id] || {total:0, todo:0, doing:0, done:0, failed:0, canceled:0};
+                var tc = taskCounts[tl.id] || {total:0, byStatus:{}};
+                // One pill per configured TASK status that actually occurs.
                 var countsHtml = tc.total === 0
                     ? '<span class="muted">0</span>'
-                    : '<span>' + tc.total + '</span>'
-                      + ' <span class="pill pill-todo" style="font-size:10px;padding:1px 5px;">' + tc.todo + '</span>'
-                      + ' <span class="pill pill-doing" style="font-size:10px;padding:1px 5px;">' + tc.doing + '</span>'
-                      + ' <span class="pill pill-done" style="font-size:10px;padding:1px 5px;">' + tc.done + '</span>';
+                    : '<span>' + tc.total + '</span> '
+                      + GaugeStatus.list('TASK').filter(function(d) { return tc.byStatus[d.code]; }).map(function(d) {
+                            return '<span class="pill" style="font-size:10px;padding:1px 5px;background:' + d.color
+                                + '22;color:' + d.color + ';border:1px solid ' + d.color + '55;">'
+                                + tc.byStatus[d.code] + '</span>';
+                        }).join(' ');
                 html += '<tr>'
                     + '<td><a href="/ui/tasklists/' + esc(tl.id) + '"><strong>' + esc(tl.title) + '</strong></a></td>'
-                    + '<td>' + statusPill(tl.status) + '</td>'
+                    + '<td>' + GaugeStatus.pill('TASKLIST', tl.status) + '</td>'
                     + '<td>' + countsHtml + '</td>'
                     + '<td><a href="/ui/tasklists/' + esc(tl.id) + '" class="btn btn-small">View</a></td>'
                     + '</tr>';
@@ -308,8 +307,24 @@
         }
     }
 
-    loadIssue();
-    loadTasklists();
+    function populateStatusSelect() {
+        var sel = document.getElementById('status-select');
+        sel.innerHTML = '';
+        GaugeStatus.list('ISSUE').forEach(function(d) {
+            var opt = document.createElement('option');
+            opt.value = d.code;
+            opt.textContent = d.label;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Statuses are configured, so the picker must exist before the issue is rendered
+    // (loadIssue assigns select.value).
+    GaugeStatus.load().then(function() {
+        populateStatusSelect();
+        loadIssue();
+        loadTasklists();
+    });
     </script>
 
     <style>

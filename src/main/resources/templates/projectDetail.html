@@ -73,12 +73,9 @@
             <label class="filter-check"><input type="checkbox" class="filter-prio" value="NORMAL" checked> NORMAL</label>
             <label class="filter-check"><input type="checkbox" class="filter-prio" value="LOW" checked> LOW</label>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <label class="muted small">Status:</label>
-            <label class="filter-check"><input type="checkbox" class="filter-status" value="TODO" checked> TODO</label>
-            <label class="filter-check"><input type="checkbox" class="filter-status" value="DOING" checked> DOING</label>
-            <label class="filter-check"><input type="checkbox" class="filter-status" value="DONE"> DONE</label>
-            <label class="filter-check"><input type="checkbox" class="filter-status" value="INACTIVE" checked> INACTIVE</label>
+            <span id="status-filters">Loading&hellip;</span>
         </div>
         <button id="reset-filters-btn" class="btn btn-small" title="Reset all filters">Reset</button>
     </div>
@@ -210,8 +207,7 @@
     }
 
     function statusPill(status) {
-        var cls = 'pill pill-' + status.toLowerCase();
-        return '<span class="' + cls + '">' + esc(status) + '</span>';
+        return GaugeStatus.pill('ISSUE', status);
     }
 
     function priorityPill(priority) {
@@ -507,6 +503,30 @@
         return values;
     }
 
+    /**
+     * Builds the status filter from the configured ISSUE set. Each status starts in the
+     * state its definition asks for (showByDefault) — that is what hides DONE but keeps
+     * a parked status visible, and it survives renaming or adding statuses.
+     */
+    function renderStatusFilters() {
+        var container = document.getElementById('status-filters');
+        var defs = GaugeStatus.list('ISSUE');
+        if (!defs.length) {
+            container.innerHTML = '<span class="muted small">none configured</span>';
+            return;
+        }
+        container.innerHTML = defs.map(function(d) {
+            return '<label class="filter-check" title="' + esc(d.category) + '">'
+                + '<input type="checkbox" class="filter-status" value="' + esc(d.code) + '"'
+                + (d.showByDefault ? ' checked' : '') + '> '
+                + '<span style="color:' + d.color + ';">' + esc(d.label) + '</span></label>';
+        }).join(' ');
+
+        container.querySelectorAll('.filter-status').forEach(function(cb) {
+            cb.addEventListener('change', function() { loadIssues(); });
+        });
+    }
+
     function buildIssuesUrl() {
         var sort = document.getElementById('sort-select').value;
         var prios = getSelectedFilters('filter-prio');
@@ -514,7 +534,11 @@
         var params = [];
         if (sort) params.push('sort=' + encodeURIComponent(sort));
         if (prios.length > 0 && prios.length < 3) params.push('priority=' + encodeURIComponent(prios.join(',')));
-        if (statuses.length > 0 && statuses.length < 4) params.push('status=' + encodeURIComponent(statuses.join(',')));
+        // Only send a filter when it actually narrows the set — the total is dynamic now.
+        var totalStatuses = GaugeStatus.list('ISSUE').length;
+        if (statuses.length > 0 && statuses.length < totalStatuses) {
+            params.push('status=' + encodeURIComponent(statuses.join(',')));
+        }
         var url = '/api/projects/' + projectId + '/issues';
         if (params.length > 0) url += '?' + params.join('&');
         return url;
@@ -550,7 +574,11 @@
 
     function resetFilters() {
         document.querySelectorAll('.filter-prio').forEach(function(c) { c.checked = true; });
-        document.querySelectorAll('.filter-status').forEach(function(c) { c.checked = true; });
+        // Reset to the configured default visibility, not to "everything".
+        var visible = GaugeStatus.defaultVisible('ISSUE');
+        document.querySelectorAll('.filter-status').forEach(function(c) {
+            c.checked = visible.indexOf(c.value) >= 0;
+        });
         document.getElementById('sort-select').value = 'PRIORITY_STATUS_NAME';
         loadIssues();
     }
@@ -571,17 +599,18 @@
         cb.addEventListener('change', function() { loadIssues(); });
     });
 
-    document.querySelectorAll('.filter-status').forEach(function(cb) {
-        cb.addEventListener('change', function() { loadIssues(); });
-    });
-
     document.getElementById('reset-filters-btn').addEventListener('click', function() {
         resetFilters();
     });
 
     loadFavorites();
     loadProject();
-    loadIssues();
+
+    // Filters are configured, so build them before the first issue fetch.
+    GaugeStatus.load().then(function() {
+        renderStatusFilters();
+        loadIssues();
+    });
     </script>
 
     <style>

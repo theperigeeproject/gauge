@@ -154,6 +154,16 @@ public class GaugePageResource {
         return Response.ok(templateEngine.process("users", ctx)).build();
     }
 
+    @GET
+    @Path("/ui/admin/statuses")
+    @RolesAllowed("admin")
+    @Produces(MediaType.TEXT_HTML)
+    public Response adminStatuses() {
+        org.thymeleaf.context.Context ctx = new org.thymeleaf.context.Context();
+        ctx.setVariable("isAdmin", true);
+        return Response.ok(templateEngine.process("adminStatuses", ctx)).build();
+    }
+
     @POST
     @Path("/logout")
     @Produces(MediaType.TEXT_HTML)

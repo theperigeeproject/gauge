@@ -243,6 +243,73 @@
             .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
         }
     </style>
+    <script>
+    /**
+     * Shared status registry client. Statuses are configurable (status_definitions),
+     * so no template may hardcode a code, a colour, or an ordering.
+     *
+     * Declared in <head> on purpose: page-level scripts are inlined into <main>, which is
+     * parsed BEFORE the script at the bottom of this layout. Anything a page needs during
+     * its own initialisation must already exist here.
+     *
+     * Usage: await GaugeStatus.load(); then GaugeStatus.pill('ISSUE', code),
+     * GaugeStatus.list('ISSUE'), GaugeStatus.label('ISSUE', code).
+     */
+    var GaugeStatus = {
+        levels: null,
+
+        _esc: function (s) {
+            return s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+        },
+
+        load: function (force) {
+            if (this.levels && !force) return Promise.resolve(this.levels);
+            return fetch('/api/statuses')
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .catch(function () { return null; })
+                .then(function (data) {
+                    this.levels = data || {};
+                    return this.levels;
+                }.bind(this));
+        },
+
+        list: function (level) {
+            return (this.levels && this.levels[level]) || [];
+        },
+
+        def: function (level, code) {
+            var found = null;
+            this.list(level).forEach(function (d) { if (d.code === code) found = d; });
+            return found;
+        },
+
+        label: function (level, code) {
+            var d = this.def(level, code);
+            return d ? d.label : code;
+        },
+
+        color: function (level, code) {
+            var d = this.def(level, code);
+            return d ? d.color : '#94a3b8';
+        },
+
+        /** Pill tinted from the configured colour. Unknown codes still render, in grey. */
+        pill: function (level, code) {
+            if (!code) return '<span class="pill" style="background:#1e293b;color:#94a3b8;">&mdash;</span>';
+            var color = this.color(level, code);
+            var label = this.label(level, code);
+            return '<span class="pill" style="background:' + color + '22;color:' + color
+                + ';border:1px solid ' + color + '55;">' + this._esc(label) + '</span>';
+        },
+
+        /** Codes shown by default, used to initialise filters. */
+        defaultVisible: function (level) {
+            return this.list(level)
+                .filter(function (d) { return d.showByDefault; })
+                .map(function (d) { return d.code; });
+        }
+    };
+    </script>
 </head>
 <body>
     <div class="layout">
@@ -255,6 +322,7 @@
                 <a href="/ui/search" th:classappend="${activePath.equals('/ui/search')} ? 'active' : ''">Search</a>
                 <a href="/ui/account" th:classappend="${activePath.equals('/ui/account')} ? 'active' : ''">Account</a>
                 <a th:if="${isAdmin}" href="/ui/users" th:classappend="${activePath.equals('/ui/users')} ? 'active' : ''">Users</a>
+                <a th:if="${isAdmin}" href="/ui/admin/statuses" th:classappend="${activePath.equals('/ui/admin/statuses')} ? 'active' : ''">Statuses</a>
             </nav>
             <div id="bookmarks-section" class="bookmarks-section" style="display:none;">
                 <div class="bookmarks-header">Bookmarks</div>

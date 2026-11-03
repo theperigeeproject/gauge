@@ -10,7 +10,7 @@ H2 file DB, dual auth (session for UI, Bearer for API). Fat JAR deployment.
 
 - **Filesystem:** `/workzone/angelica/toolchain/gauge`
 - **Tracker project:** `Gauge` = `00000073` (under `toolchain` / `Workstreams`); subproject `ADRs` = `00000561`
-- **Group/artifact/version:** `com.sheahorn:gauge:2.1.5`, base package `com.sheahorn.gauge`
+- **Group/artifact/version:** `com.sheahorn:gauge:2.1.7`, base package `com.sheahorn.gauge`
 
 ## Quick start
 
@@ -41,20 +41,39 @@ Key entry points: `resource/GaugePageResource` (UI pages), `resource/*Resource` 
 
 ## State
 
-- Branch `main`, clean, in sync with `origin/main`, HEAD `20eaa11` (v2.1.5 — INACTIVE issue status).
-- Leftover branch pointer `feat/issue-status-inactive` = same commit as `main`. Safe to delete.
-- Test baseline: ~520 tests, **2 pre-existing failures** — `TasklistRepositoryTest.testFindByIssueId` (expected 2, got 3)
-  and `ApiKeyResolverTest.testResolveMasterKey`. Suite is state-pollution-prone (leftover rows can flip
-  `IdProvider` into UUID mode → spurious ID-length failures). Compare against this baseline, don't trust green.
+- Branch `edge` (off `main`). `main` has no `develop`/`master` pair — see Conventions.
+- HEAD `2c5ca9d` — configurable statuses slices 1–4 (registry, admin API, dynamic analysis).
+- **Uncommitted on top:** slice 5, the UI — `layout.html` (`GaugeStatus` in `<head>`),
+  `issueDetail.html`, `projectDetail.html`, `projects.html`, `dashboard.html`,
+  new `adminStatuses.html` + `/ui/admin/statuses` route, FR 6 doc, README, 2.1.7.
+- **Slice 5 is unverified** — the Maven tool was returning HTTP 504 when it was written.
+  Run `mvn -B test` before trusting it.
+- Last verified full run: **565 tests, 0 failures** (at `2c5ca9d`). The two long-standing
+  baseline failures (`TasklistRepositoryTest.testFindByIssueId`,
+  `ApiKeyResolverTest.testResolveMasterKey`) turned out to be state pollution and are gone.
+- Test DB is per-profile in-memory H2 with `drop-and-create`, so state no longer leaks
+  between test classes.
 
 ## Open work (tracker `Gauge`)
 
+- `0000186F` configurable statuses — slices 1–4 committed, slice 5 (UI) uncommitted/unverified.
+- `00001877` HIGH — **`@RolesAllowed` never works for Bearer tokens**; all `/api/admin/*` 403
+  for API keys, so ID migration has never been reachable. Admin checks must be done in code
+  via the JAX-RS `SecurityContext` until `SecurityFilter` publishes a Quarkus `SecurityIdentity`.
 - `000007C5` DOING — end-to-end security test coverage (no tasklist yet on it).
-- `0000149B` — POST/PATCH description-limit mismatch + silent failure on invalid priority.
 - `000014B7` — MCP tool schemas: enumerate enum values, kill agent guessing.
-- `0000149C` — config toggle to allow long issue descriptions (depends on `0000149B`).
 - `0000018E` per-project permissions, `000001BA` trashbin — parked ideas.
 - `00000422` comprehensive unit test plan — DONE, 14 tasklists, ~232 test cases (use as reference).
+
+## Gotchas learned the hard way
+
+- **Page scripts run before `layout.html`'s bottom script.** `GaugeStatus` lives in `<head>`
+  for exactly this reason. Anything a page needs during init must be in `<head>`.
+- `@RolesAllowed` is dead for Bearer tokens (see `00001877`). `AdminResourceTest` still
+  asserts 403 as if that were correct.
+- Template edits with `fs_files_replace` can eat adjacent tags — re-read after every edit.
+- Running `mvn` is the user's job in this workspace; the tool times out. Write `build.log`,
+  read it back.
 
 ## Conventions / deviations
 

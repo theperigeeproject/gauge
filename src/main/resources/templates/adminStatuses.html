@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(title='Statuses', activePath='/ui/admin/statuses', content=~{::#page-content})}">
+<body>
+<div id="page-content">
+    <h1 class="page-title">Statuses</h1>
+    <p class="page-subtitle">
+        Statuses are configurable per level. <strong>Category</strong> decides behaviour:
+        <span class="pill" style="background:#60a5fa22;color:#60a5fa;border:1px solid #60a5fa55;">ACTIVE</span>
+        bubbles priority,
+        <span class="pill" style="background:#4ade8022;color:#4ade80;border:1px solid #4ade8055;">FINISHED</span>
+        counts as done,
+        <span class="pill" style="background:#b8b0dc22;color:#b8b0dc;border:1px solid #b8b0dc55;">PARKED</span>
+        is ignored by analysis.
+    </p>
+
+    <div id="status-message" class="status-box" style="margin-bottom:12px;"></div>
+
+    <div id="levels"></div>
+
+    <h2 class="section-title">Add a status</h2>
+    <div class="card">
+        <div class="card-body">
+            <div class="grid grid-4" style="gap:12px;align-items:end;">
+                <div class="form-group">
+                    <label for="new-level">Level</label>
+                    <select id="new-level">
+                        <option value="ISSUE">ISSUE</option>
+                        <option value="TASKLIST">TASKLIST</option>
+                        <option value="TASK">TASK</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="new-code">Code</label>
+                    <input id="new-code" type="text" placeholder="BLOCKED">
+                </div>
+                <div class="form-group">
+                    <label for="new-label">Label</label>
+                    <input id="new-label" type="text" placeholder="Blocked">
+                </div>
+                <div class="form-group">
+                    <label for="new-category">Category</label>
+                    <select id="new-category">
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="FINISHED">FINISHED</option>
+                        <option value="PARKED">PARKED</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-3" style="gap:12px;align-items:end;margin-top:12px;">
+                <div class="form-group">
+                    <label for="new-color">Colour</label>
+                    <input id="new-color" type="text" value="#94a3b8" placeholder="#rrggbb">
+                </div>
+                <div class="form-group">
+                    <label for="new-rank">Rank (blank = last)</label>
+                    <input id="new-rank" type="number" placeholder="auto">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <label class="filter-check" style="font-size:13px;">
+                        <input id="new-show" type="checkbox" checked> Show by default
+                    </label>
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <button id="create-btn" class="btn btn-primary">+ Create Status</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+    function message(text, kind) {
+        var el = document.getElementById('status-message');
+        if (!text) { el.innerHTML = ''; return; }
+        var color = kind === 'error' ? 'var(--danger)' : 'var(--success)';
+        el.innerHTML = '<span style="color:' + color + ';">' + esc(text) + '</span>';
+    }
+
+    function api(url, options) {
+        return fetch(url, options).then(function(res) {
+            if (res.status === 204) return { ok: true, data: null };
+            return res.json().then(function(data) {
+                return { ok: res.ok, status: res.status, data: data };
+            }).catch(function() {
+                return { ok: res.ok, status: res.status, data: null };
+            });
+        });
+    }
+
+    function describeFailure(result) {
+        if (result.data && result.data.message) return result.data.error + ': ' + result.data.message;
+        return 'Request failed (' + result.status + ')';
+    }
+
+    var LEVELS = ['ISSUE', 'TASKLIST', 'TASK'];
+
+    function renderLevels() {
+        var html = '';
+        LEVELS.forEach(function(level) {
+            var defs = GaugeStatus.list(level);
+            html += '<h2 class="section-title">' + level + '</h2>';
+            html += '<table><thead><tr>'
+                + '<th>Code</th><th>Label</th><th>Category</th><th>Colour</th>'
+                + '<th>Rank</th><th>Shown</th><th>Built-in</th><th></th>'
+                + '</tr></thead><tbody>';
+            defs.forEach(function(d) {
+                var id = esc(d.id);
+                var locked = d.builtin;
+                html += '<tr data-id="' + id + '" data-level="' + esc(level) + '">'
+                    + '<td><code>' + esc(d.code) + '</code></td>'
+                    + '<td><input class="f-label" type="text" value="' + esc(d.label) + '" style="font-size:13px;padding:3px 6px;width:130px;"></td>'
+                    + '<td><select class="f-category" style="font-size:13px;padding:3px 6px;">'
+                    + ['ACTIVE','FINISHED','PARKED'].map(function(c) {
+                        return '<option value="' + c + '"' + (d.category === c ? ' selected' : '') + '>' + c + '</option>';
+                      }).join('')
+                    + '</select></td>'
+                    + '<td><input class="f-color" type="text" value="' + esc(d.color) + '" style="font-size:13px;padding:3px 6px;width:86px;"></td>'
+                    + '<td><input class="f-rank" type="number" value="' + d.rank + '" style="font-size:13px;padding:3px 6px;width:66px;"></td>'
+                    + '<td><input class="f-show" type="checkbox"' + (d.showByDefault ? ' checked' : '') + '></td>'
+                    + '<td class="muted small">' + (locked ? 'yes' : '') + '</td>'
+                    + '<td style="white-space:nowrap;">'
+                    + '<button class="btn btn-small btn-primary save-btn">Save</button> '
+                    + (locked
+                        ? '<span class="muted small" title="Built-in statuses cannot be deleted">—</span>'
+                        : '<button class="btn btn-small btn-danger delete-btn">Delete</button>')
+                    + '</td></tr>';
+            });
+            html += '</tbody></table>';
+        });
+        document.getElementById('levels').innerHTML = html;
+        bindRows();
+    }
+
+    function bindRows() {
+        document.querySelectorAll('.save-btn').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                var row = btn.closest('tr');
+                var id = row.getAttribute('data-id');
+                var body = {
+                    label: row.querySelector('.f-label').value.trim(),
+                    category: row.querySelector('.f-category').value,
+                    color: row.querySelector('.f-color').value.trim(),
+                    rank: parseInt(row.querySelector('.f-rank').value, 10),
+                    showByDefault: row.querySelector('.f-show').checked
+                };
+                var result = await api('/api/admin/statuses/' + encodeURIComponent(id), {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                if (result.ok) {
+                    message('Saved ' + body.label);
+                    await GaugeStatus.load(true);
+                    renderLevels();
+                } else {
+                    message(describeFailure(result), 'error');
+                }
+            });
+        });
+
+        document.querySelectorAll('.delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                var row = btn.closest('tr');
+                var id = row.getAttribute('data-id');
+                var code = row.querySelector('code').textContent;
+                var reassign = prompt(
+                    'Delete status "' + code + '"?\n\n'
+                    + 'If issues/tasks still use it, enter the CODE to reassign them to.\n'
+                    + 'Leave blank to attempt deletion without reassignment.', '');
+                if (reassign === null) return;
+
+                var url = '/api/admin/statuses/' + encodeURIComponent(id);
+                if (reassign.trim()) url += '?reassignTo=' + encodeURIComponent(reassign.trim());
+                var result = await api(url, { method: 'DELETE' });
+                if (result.ok) {
+                    message('Deleted ' + code);
+                    await GaugeStatus.load(true);
+                    renderLevels();
+                } else {
+                    message(describeFailure(result), 'error');
+                }
+            });
+        });
+    }
+
+    document.getElementById('create-btn').addEventListener('click', async function() {
+        var body = {
+            level: document.getElementById('new-level').value,
+            code: document.getElementById('new-code').value.trim(),
+            label: document.getElementById('new-label').value.trim() || null,
+            category: document.getElementById('new-category').value,
+            color: document.getElementById('new-color').value.trim() || null,
+            rank: document.getElementById('new-rank').value ? parseInt(document.getElementById('new-rank').value, 10) : null,
+            showByDefault: document.getElementById('new-show').checked
+        };
+        var result = await api('/api/admin/statuses', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        if (result.ok) {
+            message('Created ' + body.code);
+            document.getElementById('new-code').value = '';
+            document.getElementById('new-label').value = '';
+            document.getElementById('new-rank').value = '';
+            await GaugeStatus.load(true);
+            renderLevels();
+        } else {
+            message(describeFailure(result), 'error');
+        }
+    });
+
+    GaugeStatus.load().then(renderLevels);
+    </script>
+</div>
+</body>
+</html>

@@ -56,8 +56,7 @@
     function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
     function statusPill(status) {
-        var cls = 'pill pill-' + status.toLowerCase();
-        return '<span class="' + cls + '">' + esc(status) + '</span>';
+        return GaugeStatus.pill('ISSUE', status);
     }
 
     async function refresh() {
@@ -83,12 +82,20 @@
                 statusCounts[i.status] = (statusCounts[i.status] || 0) + 1;
             });
             var statusHtml = '<div class="stack" style="gap:6px;">';
-            Object.keys(statusCounts).forEach(function(s) {
+            // Iterate the configured statuses in rank order, so new statuses appear here
+            // automatically and the list order never drifts from the rest of the UI.
+            var ordered = GaugeStatus.list('ISSUE').map(function(d) { return d.code; })
+                .filter(function(code) { return statusCounts[code]; });
+            // Anything unrecognised (shouldn't happen) still gets counted, at the end.
+            Object.keys(statusCounts).forEach(function(code) {
+                if (ordered.indexOf(code) < 0) ordered.push(code);
+            });
+            ordered.forEach(function(s) {
                 statusHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">'
                     + statusPill(s)
                     + '<span>' + statusCounts[s] + '</span></div>';
             });
-            if (Object.keys(statusCounts).length === 0) {
+            if (ordered.length === 0) {
                 statusHtml += '<div class="muted">No issues yet</div>';
             }
             statusHtml += '</div>';
@@ -112,7 +119,9 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', refresh);
+    document.addEventListener('DOMContentLoaded', function() {
+        GaugeStatus.load().then(refresh);
+    });
     </script>
 
 </div>

@@ -107,15 +107,34 @@ Please note that a task can simply state it refers to a project, creating a sema
 
 ### Statuses
 
+Statuses are **configurable per level** — admins manage them at `/ui/admin/statuses` (or via
+`/api/admin/statuses`). Read the current sets with `GET /api/statuses`.
+
+A status carries a **category**, which is what decides behaviour:
+
+| Category | Meaning |
+|---|---|
+| `ACTIVE` | Being worked on. Bubbles a priority; counts as unfinished. |
+| `FINISHED` | Done. Satisfies the subtree; ranks above `PARKED`. |
+| `PARKED` | Terminal but not done (parked, canceled, failed). Never bubbles a priority, never displaces `FINISHED`. |
+
+Seeded defaults:
+
 | Level | Statuses |
 |---|---|
 | Issue | `TODO`, `DOING`, `DONE`, `INACTIVE` |
 | Tasklist | `TODO`, `DOING`, `DONE`, `CANCELED` |
 | Task | `TODO`, `DOING`, `DONE`, `FAILED`, `CANCELED` |
 
-Every entity starts in `TODO`. Transitions are unrestricted — there is no state machine.
+Every entity starts in `TODO`, which cannot be renamed or deleted. Transitions are
+unrestricted — there is no state machine. Renaming a status rewrites existing rows;
+deleting one that is in use requires `?reassignTo=<code>`.
 
-`INACTIVE` (issues only) means **parked**: not being worked on, and not finished. It is the *least important* status — it ranks below `DONE` and never displaces it. Parked issues never bubble a priority (a parked `HIGH` issue does not make its project `HIGH`), and `INACTIVE` surfaces in project analysis only when nothing is active and nothing is done. Ordering is `TODO, DOING, DONE, INACTIVE` everywhere — active work first, finished next, parked last — and parked issues are shown by default in the project issue list (unlike `DONE`).
+`INACTIVE` (issues) means **parked**: the least important status. It ranks below `DONE` and
+never displaces it, never bubbles a priority, and shows by default in the project issue list
+(unlike `DONE`). Those behaviours follow from its `PARKED` category, not from its name.
+
+See [FR 6](docs/adr/0019-fr-configurable-statuses.md).
 
 ## API
 
@@ -153,7 +172,18 @@ Per-user project bookmarks. Add, remove, list, reset.
 
 ### Admin (`/api/admin`)
 
-ID migration from UUID to sequential hex-8. One-time, destructive, guarded by a JVM flag.
+Admin-only. ID migration from UUID to sequential hex-8 (one-time, destructive, guarded by a
+JVM flag), and status management:
+
+- `POST /api/admin/statuses` — create. `level`: `ISSUE|TASKLIST|TASK`, `category`: `ACTIVE|FINISHED|PARKED`.
+- `PATCH /api/admin/statuses/{id}` — update. Changing `code` renames and rewrites existing rows.
+- `DELETE /api/admin/statuses/{id}?reassignTo=<code>` — delete; `409 STATUS_IN_USE` without a reassignment target. Built-ins are protected.
+
+### Statuses (`/api/statuses`)
+
+Any authenticated caller. `GET /api/statuses` returns all three levels keyed by level name;
+`?level=ISSUE` returns a flat list ordered by rank. Use this to discover valid status codes
+before writing.
 
 ## Docker
 
