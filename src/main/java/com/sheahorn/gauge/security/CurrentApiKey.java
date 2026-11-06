@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
 import jakarta.enterprise.context.RequestScoped;
 

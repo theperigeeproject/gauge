@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.domain;
+package pl.perigee.gauge.domain;
 
 /**
  * Result of project analysis — computed stats for a single project

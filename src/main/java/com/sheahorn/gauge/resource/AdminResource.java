@@ -1,6 +1,6 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
-import com.sheahorn.gauge.service.IdMigrationService;
+import pl.perigee.gauge.service.IdMigrationService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;

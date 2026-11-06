@@ -1,10 +1,10 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
-import com.sheahorn.gauge.domain.PatchTaskRequest;
-import com.sheahorn.gauge.domain.Task;
-import com.sheahorn.gauge.domain.UpdateTaskStatusRequest;
-import com.sheahorn.gauge.security.ProjectAccessGuard;
-import com.sheahorn.gauge.service.TaskService;
+import pl.perigee.gauge.domain.PatchTaskRequest;
+import pl.perigee.gauge.domain.Task;
+import pl.perigee.gauge.domain.UpdateTaskStatusRequest;
+import pl.perigee.gauge.security.ProjectAccessGuard;
+import pl.perigee.gauge.service.TaskService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;

@@ -1,6 +1,6 @@
-package com.sheahorn.gauge.repository;
+package pl.perigee.gauge.repository;
 
-import com.sheahorn.gauge.domain.User;
+import pl.perigee.gauge.domain.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import java.util.List;

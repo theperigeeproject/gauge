@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.domain;
+package pl.perigee.gauge.domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;

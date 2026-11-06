@@ -1,6 +1,6 @@
-package com.sheahorn.gauge.service;
+package pl.perigee.gauge.service;
 
-import com.sheahorn.gauge.domain.User;
+import pl.perigee.gauge.domain.User;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;

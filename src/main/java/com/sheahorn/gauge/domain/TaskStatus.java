@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.domain;
+package pl.perigee.gauge.domain;
 
 public enum TaskStatus {
     TODO,

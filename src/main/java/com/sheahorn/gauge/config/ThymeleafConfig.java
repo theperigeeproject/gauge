@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.config;
+package pl.perigee.gauge.config;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;

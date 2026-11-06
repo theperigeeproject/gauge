@@ -1,9 +1,9 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
-import com.sheahorn.gauge.domain.Issue;
-import com.sheahorn.gauge.domain.Project;
-import com.sheahorn.gauge.domain.Task;
-import com.sheahorn.gauge.domain.Tasklist;
+import pl.perigee.gauge.domain.Issue;
+import pl.perigee.gauge.domain.Project;
+import pl.perigee.gauge.domain.Task;
+import pl.perigee.gauge.domain.Tasklist;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

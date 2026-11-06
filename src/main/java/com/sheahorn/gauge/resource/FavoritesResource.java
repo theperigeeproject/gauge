@@ -1,6 +1,6 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
-import com.sheahorn.gauge.service.FavoritesService;
+import pl.perigee.gauge.service.FavoritesService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;

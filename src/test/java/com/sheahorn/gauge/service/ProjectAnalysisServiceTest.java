@@ -1,10 +1,10 @@
-package com.sheahorn.gauge.service;
+package pl.perigee.gauge.service;
 
-import com.sheahorn.gauge.domain.*;
-import com.sheahorn.gauge.repository.IssueRepository;
-import com.sheahorn.gauge.repository.ProjectRepository;
-import com.sheahorn.gauge.repository.TaskRepository;
-import com.sheahorn.gauge.repository.TasklistRepository;
+import pl.perigee.gauge.domain.*;
+import pl.perigee.gauge.repository.IssueRepository;
+import pl.perigee.gauge.repository.ProjectRepository;
+import pl.perigee.gauge.repository.TaskRepository;
+import pl.perigee.gauge.repository.TasklistRepository;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;

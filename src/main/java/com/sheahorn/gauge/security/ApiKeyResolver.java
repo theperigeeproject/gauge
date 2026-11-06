@@ -1,7 +1,7 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
-import com.sheahorn.gauge.domain.User;
-import com.sheahorn.gauge.service.ApiKeyService;
+import pl.perigee.gauge.domain.User;
+import pl.perigee.gauge.service.ApiKeyService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -32,7 +32,7 @@ public class ApiKeyResolver {
         }
         // User-created API keys (hashed)
         String keyHash = apiKeyService.hashKey(providedKey);
-        com.sheahorn.gauge.domain.ApiKey entity = apiKeyService.findByKeyHash(keyHash);
+        pl.perigee.gauge.domain.ApiKey entity = apiKeyService.findByKeyHash(keyHash);
         if (entity != null) {
             User user = User.findById(entity.userId);
             if (user != null) {

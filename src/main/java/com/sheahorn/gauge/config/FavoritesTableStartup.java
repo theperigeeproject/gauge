@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.config;
+package pl.perigee.gauge.config;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.Startup;

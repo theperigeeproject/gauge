@@ -1,6 +1,6 @@
-package com.sheahorn.gauge.service;
+package pl.perigee.gauge.service;
 
-import com.sheahorn.gauge.domain.ApiKey;
+import pl.perigee.gauge.domain.ApiKey;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;

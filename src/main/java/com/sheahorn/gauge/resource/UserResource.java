@@ -1,7 +1,7 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
-import com.sheahorn.gauge.domain.User;
-import com.sheahorn.gauge.service.UserService;
+import pl.perigee.gauge.domain.User;
+import pl.perigee.gauge.service.UserService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;

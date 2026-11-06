@@ -1,10 +1,10 @@
-package com.sheahorn.gauge.service;
+package pl.perigee.gauge.service;
 
-import com.sheahorn.gauge.domain.Task;
-import com.sheahorn.gauge.domain.Tasklist;
-import com.sheahorn.gauge.domain.TasklistStatus;
-import com.sheahorn.gauge.repository.TasklistRepository;
-import com.sheahorn.gauge.repository.TaskRepository;
+import pl.perigee.gauge.domain.Task;
+import pl.perigee.gauge.domain.Tasklist;
+import pl.perigee.gauge.domain.TasklistStatus;
+import pl.perigee.gauge.repository.TasklistRepository;
+import pl.perigee.gauge.repository.TaskRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;

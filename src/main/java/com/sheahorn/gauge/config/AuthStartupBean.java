@@ -1,6 +1,6 @@
-package com.sheahorn.gauge.config;
+package pl.perigee.gauge.config;
 
-import com.sheahorn.gauge.domain.User;
+import pl.perigee.gauge.domain.User;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.Startup;

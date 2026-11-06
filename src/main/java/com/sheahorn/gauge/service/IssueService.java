@@ -1,12 +1,12 @@
-package com.sheahorn.gauge.service;
+package pl.perigee.gauge.service;
 
-import com.sheahorn.gauge.domain.Issue;
-import com.sheahorn.gauge.domain.IssueStatus;
-import com.sheahorn.gauge.domain.Priority;
-import com.sheahorn.gauge.domain.SortOption;
-import com.sheahorn.gauge.repository.IssueRepository;
-import com.sheahorn.gauge.repository.TasklistRepository;
-import com.sheahorn.gauge.repository.TaskRepository;
+import pl.perigee.gauge.domain.Issue;
+import pl.perigee.gauge.domain.IssueStatus;
+import pl.perigee.gauge.domain.Priority;
+import pl.perigee.gauge.domain.SortOption;
+import pl.perigee.gauge.repository.IssueRepository;
+import pl.perigee.gauge.repository.TasklistRepository;
+import pl.perigee.gauge.repository.TaskRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;

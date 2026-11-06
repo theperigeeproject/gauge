@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;

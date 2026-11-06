@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;

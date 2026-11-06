@@ -1,8 +1,8 @@
-package com.sheahorn.gauge.repository;
+package pl.perigee.gauge.repository;
 
-import com.sheahorn.gauge.domain.Issue;
-import com.sheahorn.gauge.domain.IssueStatus;
-import com.sheahorn.gauge.domain.Priority;
+import pl.perigee.gauge.domain.Issue;
+import pl.perigee.gauge.domain.IssueStatus;
+import pl.perigee.gauge.domain.Priority;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;

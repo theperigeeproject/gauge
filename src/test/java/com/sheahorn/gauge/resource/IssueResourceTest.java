@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;

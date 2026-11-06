@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.service;
+package pl.perigee.gauge.service;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;

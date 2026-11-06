@@ -1,7 +1,7 @@
-package com.sheahorn.gauge.repository;
+package pl.perigee.gauge.repository;
 
-import com.sheahorn.gauge.domain.Tasklist;
-import com.sheahorn.gauge.domain.TasklistStatus;
+import pl.perigee.gauge.domain.Tasklist;
+import pl.perigee.gauge.domain.TasklistStatus;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;

@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.domain;
+package pl.perigee.gauge.domain;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;

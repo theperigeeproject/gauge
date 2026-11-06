@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
 public class ApiKey {
     public final String userId;

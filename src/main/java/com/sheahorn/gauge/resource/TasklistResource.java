@@ -1,15 +1,15 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
-import com.sheahorn.gauge.domain.CreateTaskRequest;
-import com.sheahorn.gauge.domain.LinkDecomposedTaskRequest;
-import com.sheahorn.gauge.domain.PatchTasklistRequest;
-import com.sheahorn.gauge.domain.ReorderTasksRequest;
-import com.sheahorn.gauge.domain.Task;
-import com.sheahorn.gauge.domain.Tasklist;
-import com.sheahorn.gauge.domain.UpdateTasklistStatusRequest;
-import com.sheahorn.gauge.security.ProjectAccessGuard;
-import com.sheahorn.gauge.service.TaskService;
-import com.sheahorn.gauge.service.TasklistService;
+import pl.perigee.gauge.domain.CreateTaskRequest;
+import pl.perigee.gauge.domain.LinkDecomposedTaskRequest;
+import pl.perigee.gauge.domain.PatchTasklistRequest;
+import pl.perigee.gauge.domain.ReorderTasksRequest;
+import pl.perigee.gauge.domain.Task;
+import pl.perigee.gauge.domain.Tasklist;
+import pl.perigee.gauge.domain.UpdateTasklistStatusRequest;
+import pl.perigee.gauge.security.ProjectAccessGuard;
+import pl.perigee.gauge.service.TaskService;
+import pl.perigee.gauge.service.TasklistService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;

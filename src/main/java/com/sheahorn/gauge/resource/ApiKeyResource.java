@@ -1,8 +1,8 @@
-package com.sheahorn.gauge.resource;
+package pl.perigee.gauge.resource;
 
-import com.sheahorn.gauge.domain.ApiKey;
-import com.sheahorn.gauge.security.ProjectAccessGuard;
-import com.sheahorn.gauge.service.ApiKeyService;
+import pl.perigee.gauge.domain.ApiKey;
+import pl.perigee.gauge.security.ProjectAccessGuard;
+import pl.perigee.gauge.service.ApiKeyService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -99,7 +99,7 @@ public class ApiKeyResource {
             return null;
         }
         String username = securityContext.getUserPrincipal().getName();
-        com.sheahorn.gauge.domain.User user = com.sheahorn.gauge.domain.User.findByUsername(username);
+        pl.perigee.gauge.domain.User user = pl.perigee.gauge.domain.User.findByUsername(username);
         return user != null ? user.id : null;
     }
 }

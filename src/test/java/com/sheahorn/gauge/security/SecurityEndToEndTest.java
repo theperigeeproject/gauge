@@ -1,7 +1,7 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
-import com.sheahorn.gauge.domain.User;
-import com.sheahorn.gauge.service.ApiKeyService;
+import pl.perigee.gauge.domain.User;
+import pl.perigee.gauge.service.ApiKeyService;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;

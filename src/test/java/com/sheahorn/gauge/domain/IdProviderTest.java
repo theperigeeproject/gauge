@@ -1,4 +1,4 @@
-package com.sheahorn.gauge.domain;
+package pl.perigee.gauge.domain;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;

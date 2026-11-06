@@ -1,7 +1,7 @@
-package com.sheahorn.gauge.security;
+package pl.perigee.gauge.security;
 
-import com.sheahorn.gauge.domain.User;
-import com.sheahorn.gauge.service.ApiKeyService;
+import pl.perigee.gauge.domain.User;
+import pl.perigee.gauge.service.ApiKeyService;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -25,7 +25,7 @@ class ApiKeyResolverTest {
     @BeforeEach
     @Transactional
     void cleanUp() {
-        com.sheahorn.gauge.domain.ApiKey.findAll().stream().forEach(ak -> ak.delete());
+        pl.perigee.gauge.domain.ApiKey.findAll().stream().forEach(ak -> ak.delete());
         User.findAll().stream()
             .map(u -> (User) u)
             .filter(u -> !"admin".equals(u.username))
