@@ -14,8 +14,13 @@ target/
 .DS_Store
 Thumbs.db
 
-# Quarkus
-# dev mode generated files
+# Script output
+build.log
+test.log
+run.log
+
+# Local dev config (real keys live here, never in git)
+dev.application.properties
 
 #db
 data/

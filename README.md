@@ -13,14 +13,22 @@ Settle comfortably in the passenger's seat. Let your AI companion steer, and hol
 ### 1. Build
 
 ```bash
-mvn clean package
+./build.sh
 ```
 
-Requires Java 17 and Maven.
+Runs `mvn -B clean package`; output is teed to `build.log`. Requires Java 17 and Maven.
 
 ### 2. Configure
 
-You must configure security before using Gauge. Change at least the master API key and pepper in `application.properties`. The app **refuses to start** if the master API key is still `change-me`.
+You must configure security before using Gauge. The app **refuses to start** while the master API key or the pepper is still `change-me`.
+
+Create your local override file from the sample:
+
+```bash
+cp dev.application.properties.sample dev.application.properties
+```
+
+`dev.application.properties` is gitignored and is layered over `src/main/resources/application.properties` at runtime, so real keys never enter the repository.
 
 | Default | Value |
 |---|---|
@@ -35,10 +43,10 @@ Consider changing default credentials if you expose Gauge to the open network. Y
 ### 3. Run
 
 ```bash
-./runner.sh
+./run.sh
 ```
 
-The runner script supplies Gauge with additional `application.properties`, which override defaults from the jar. If you want to avoid this step, modify sources directly (see Configuration below).
+`run.sh` boots the jar with `QUARKUS_CONFIG_LOCATIONS=dev.application.properties`, so your local file overrides the packaged defaults. Output is teed to `run.log`. Build first with `./build.sh`.
 
 ### 4. Use
 
@@ -46,7 +54,7 @@ The app listens on `http://127.0.0.1:8087` by default. UI is available at `/`. O
 
 ## Configuration
 
-All settings live in `application.properties`. The minimal viable set:
+All settings live in `src/main/resources/application.properties`. Runtime overrides go in the gitignored `dev.application.properties` (see `dev.application.properties.sample`) and are picked up by `run.sh`. The minimal viable set:
 
 | Property | Description |
 |---|---|
@@ -57,7 +65,15 @@ All settings live in `application.properties`. The minimal viable set:
 | `quarkus.http.port` | HTTP listen port |
 | `quarkus.hibernate-orm.database.generation` | Hibernate DDL value |
 
-If you want the app to listen on all interfaces, set host to `0.0.0.0`. Default DDL is set to `none`, which will halt startup. Safest startup choice is `update`.
+If you want the app to listen on all interfaces, set host to `0.0.0.0`. The packaged default DDL is `none`, which will halt startup against an empty database — `update` is the safest choice for a local run, and `dev.application.properties.sample` already sets it.
+
+## Tests
+
+```bash
+./test.sh
+```
+
+Runs `mvn -B clean test`; output is teed to `test.log`. The suite boots the whole application under the `test` profile, using the in-memory H2 configured in `src/test/resources/application.properties` — it must never touch `./data/gauge`.
 
 ## Authentication
 

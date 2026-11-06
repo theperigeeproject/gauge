@@ -1,0 +1,20 @@
+# Local dev overrides — copy to dev.application.properties (gitignored):
+#
+#     cp dev.application.properties.sample dev.application.properties
+#
+# This file is layered on top of src/main/resources/application.properties by
+# run.sh (via QUARKUS_CONFIG_LOCATIONS) and wins over it.
+#
+# MasterKeyGuard refuses to boot while gauge.api-key.access or
+# gauge.api-key.pepper is still "change-me", so these two are the minimum
+# needed to get a local run going.
+
+quarkus.http.host=127.0.0.1
+quarkus.http.port=8087
+
+gauge.api-key.access=dev-master-key
+gauge.api-key.pepper=dev-pepper
+
+# The packaged default is `none`, which halts startup on a fresh database.
+quarkus.hibernate-orm.database.generation=update
+quarkus.datasource.jdbc.url=jdbc:h2:file:./data/gauge;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
