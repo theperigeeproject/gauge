@@ -6,6 +6,7 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import java.util.List;
@@ -17,6 +18,15 @@ public class IdProvider {
 
     private static final Logger LOG = Logger.getLogger(IdProvider.class);
     private static final long MAX_HEX = 0xFFFFFFFFL;
+
+    /**
+     * Lowest ID the sequence may hand out. Acts as a FLOOR, never a cap — existing
+     * rows always win, because reusing an ID that is already in the database would
+     * be a primary-key collision. Decimal or 0x-prefixed hex; kept as String so
+     * a hex literal survives config parsing.
+     */
+    @ConfigProperty(name = "gauge.ids.start-offset", defaultValue = "0")
+    String startOffsetRaw;
 
     private final AtomicLong counter = new AtomicLong(0);
     private volatile boolean initialized = false;
@@ -49,18 +59,23 @@ public class IdProvider {
     }
 
     /**
-     * Called after migration: reset to hex-8 mode with counter at the given max.
+     * Called after migration: reset to hex-8 mode with counter at the given max,
+     * still floored by the configured start offset.
      */
     public void resetAfterMigration(long maxId) {
+        long offset = parseOffset(startOffsetRaw);
+        long start = resolveStart(maxId, offset);
         uuidFallback = false;
-        counter.set(maxId);
+        counter.set(start);
         initialized = true;
-        LOG.infof("IdProvider reset after migration. Max ID = %08X, next will be %08X", maxId, maxId + 1);
+        LOG.infof("IdProvider reset after migration. Max ID = %08X, start-offset = %08X, next will be %08X",
+            maxId, offset, start + 1);
     }
 
     @Transactional
     void onStart(@Observes StartupEvent ev) {
-        LOG.info("Initializing IdProvider – scanning existing IDs…");
+        long offset = parseOffset(startOffsetRaw);
+        LOG.infof("Initializing IdProvider – scanning existing IDs… (start-offset = %08X)", offset);
         counter.set(0);
 
         // Tables managed by IdProvider (User and ApiKey stay on UUID)
@@ -92,9 +107,50 @@ public class IdProvider {
             }
         }
 
-        counter.set(maxFound);
+        long start = resolveStart(maxFound, offset);
+        counter.set(start);
         initialized = true;
-        LOG.infof("IdProvider ready. Last seen ID = %08X, next will be %08X", maxFound, maxFound + 1);
+        LOG.infof("IdProvider ready. Highest ID in DB = %08X, start-offset = %08X, next will be %08X",
+            maxFound, offset, start + 1);
+    }
+
+    /**
+     * The offset is a floor: the counter may never sit below {@code offset - 1}, and
+     * never below the highest ID already in the database. Returns the counter value,
+     * i.e. the ID handed out next is {@code resolveStart(...) + 1}.
+     */
+    static long resolveStart(long dbMax, long offset) {
+        long floor = Math.max(0L, offset) - 1L;   // offset 0 ⇒ floor -1 ⇒ irrelevant
+        return Math.max(dbMax, floor);
+    }
+
+    /**
+     * Parses {@code gauge.ids.start-offset}. Blank ⇒ 0. Negative ⇒ 0. Above 0xFFFFFFFF ⇒
+     * fail fast, because every ID would be in UUID-fallback territory from the first call.
+     */
+    static long parseOffset(String raw) {
+        if (raw == null || raw.isBlank()) return 0L;
+        String s = raw.trim();
+        long value;
+        try {
+            if (s.startsWith("0x") || s.startsWith("0X")) {
+                value = Long.parseLong(s.substring(2), 16);
+            } else {
+                value = Long.parseLong(s);
+            }
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException(String.format(
+                "Invalid gauge.ids.start-offset '%s': expected decimal or 0x-prefixed hex", raw), e);
+        }
+        if (value < 0) {
+            LOG.warnf("gauge.ids.start-offset %d is negative, treating as 0", value);
+            return 0L;
+        }
+        if (value > MAX_HEX) {
+            throw new IllegalStateException(String.format(
+                "gauge.ids.start-offset %d exceeds the hex-8 range (max %d / 0xFFFFFFFF)", value, MAX_HEX));
+        }
+        return value;
     }
 
     private static boolean isHex8(String s) {

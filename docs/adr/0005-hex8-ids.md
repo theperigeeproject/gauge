@@ -17,6 +17,7 @@ Business entities (projects, issues, tasklists, tasks) use **globally unique, se
 
 ## Consequences
 - `IdProvider` scans all 4 managed tables on startup to find the highest existing hex-8 ID and resumes the counter
+- `gauge.ids.start-offset` (issue 000018CA) sets a **floor** for the sequence: the first ID handed out is `max(dbMax + 1, offset)`. The offset can never lower the counter — continuity beats configuration, because handing out an ID already in the database would be a primary-key collision. Default `0` reproduces the original behaviour; values above `0xFFFFFFFF` are rejected at startup
 - If any non-hex-8 ID is found, the provider falls back to UUID mode — migration required
 - `IdMigrationService` exists as a one-time tool to convert UUIDs to hex-8, guarded by a JVM flag (`angelitrack.migration.i-know-what-i-am-doing`)
 - `IdProviderHolder` bridges CDI into static entity factory methods (`Project.create()`, etc.)

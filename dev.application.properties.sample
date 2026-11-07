@@ -18,3 +18,8 @@ gauge.api-key.pepper=dev-pepper
 # The packaged default is `none`, which halts startup on a fresh database.
 quarkus.hibernate-orm.database.generation=update
 quarkus.datasource.jdbc.url=jdbc:h2:file:./data/gauge;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+
+# Starting floor for the hex-8 ID sequence. Uncomment to begin higher than
+# 00000001 on an empty database; ignored (continuity wins) once the DB holds
+# IDs at or above this value. Decimal or 0x-prefixed hex.
+# gauge.ids.start-offset=0x4000

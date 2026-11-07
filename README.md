@@ -62,10 +62,21 @@ All settings live in `src/main/resources/application.properties`. Runtime overri
 | `gauge.api-key.pepper` | Pepper for hashing user-created API keys |
 | `gauge.auth.enabled` | Toggle for the SecurityFilter (default `true`). Set to `false` to disable Bearer token enforcement entirely. |
 | `gauge.auth.admin.username` / `.password` | Seeded admin user for the browser UI |
+| `gauge.ids.start-offset` | Floor for the hex-8 ID sequence (default `0`). Decimal or `0x`-prefixed hex. |
 | `quarkus.http.port` | HTTP listen port |
 | `quarkus.hibernate-orm.database.generation` | Hibernate DDL value |
 
 If you want the app to listen on all interfaces, set host to `0.0.0.0`. The packaged default DDL is `none`, which will halt startup against an empty database — `update` is the safest choice for a local run, and `dev.application.properties.sample` already sets it.
+
+### ID start offset
+
+Entity IDs are sequential hex-8 (`00000001`, `00000002`, …). `gauge.ids.start-offset` raises where the sequence begins, so a fresh database can start at, say, `00004000`:
+
+```properties
+gauge.ids.start-offset=0x4000
+```
+
+The offset is a **floor, not a cap** — the first ID handed out is `max(highest ID already in the database + 1, start-offset)`. Existing rows always win, because reusing an ID already present would collide with a primary key. Consequences: restarting with the same offset changes nothing, and raising it above the current highest ID only takes effect on an empty (or lower-numbered) database. Values above `0xFFFFFFFF` are rejected at startup.
 
 ## Tests
 
