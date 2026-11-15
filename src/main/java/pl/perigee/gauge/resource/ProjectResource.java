@@ -12,6 +12,7 @@ import pl.perigee.gauge.domain.ReparentProjectRequest;
 import pl.perigee.gauge.domain.SortOption;
 import pl.perigee.gauge.security.ProjectAccessGuard;
 import pl.perigee.gauge.service.IssueService;
+import pl.perigee.gauge.service.InputParser;
 import pl.perigee.gauge.service.ProjectAnalysisService;
 import pl.perigee.gauge.service.ProjectService;
 import jakarta.annotation.security.RolesAllowed;
@@ -45,6 +46,9 @@ public class ProjectResource {
 
     @Inject
     ProjectAccessGuard accessGuard;
+
+    @Inject
+    InputParser inputParser;
 
     @Context
     SecurityContext securityContext;
@@ -90,14 +94,13 @@ public class ProjectResource {
 
         Set<Priority> priorities = null;
         if (priority != null && !priority.isBlank()) {
+            // Unknown values are REJECTED, not silently dropped (0000149B). A filter that
+            // quietly ignores garbage answers with a superset of what the caller asked for,
+            // which looks like a working query and is not one.
             priorities = Arrays.stream(priority.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .map(s -> {
-                    try { return Priority.valueOf(s.toUpperCase()); }
-                    catch (IllegalArgumentException e) { return null; }
-                })
-                .filter(p -> p != null)
+                .map(inputParser::requiredPriority)
                 .collect(Collectors.toSet());
         }
 
@@ -106,11 +109,7 @@ public class ProjectResource {
             statuses = Arrays.stream(status.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .map(s -> {
-                    try { return IssueStatus.valueOf(s.toUpperCase()); }
-                    catch (IllegalArgumentException e) { return null; }
-                })
-                .filter(s -> s != null)
+                .map(inputParser::requiredIssueStatus)
                 .collect(Collectors.toSet());
         }
 

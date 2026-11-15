@@ -1,5 +1,6 @@
 package pl.perigee.gauge.service;
 
+import pl.perigee.gauge.config.IssueDescriptionPolicy;
 import pl.perigee.gauge.domain.Issue;
 import pl.perigee.gauge.domain.IssueStatus;
 import pl.perigee.gauge.domain.Priority;
@@ -28,8 +29,13 @@ public class IssueService {
     @Inject
     TaskRepository taskRepository;
 
+    @Inject
+    IssueDescriptionPolicy descriptionPolicy;
+
     @Transactional
     public Issue create(String projectId, String title, String description, Priority priority) {
+        // Both write paths funnel through the policy, so the length contract cannot diverge.
+        descriptionPolicy.validate(description);
         Issue issue = Issue.create(projectId, title, description, priority);
         return repository.save(issue);
     }
@@ -132,6 +138,10 @@ public class IssueService {
 
     @Transactional
     public Optional<Issue> patch(String id, String title, String description) {
+        // Validated before the lookup on purpose: a rejected payload never reaches the
+        // database. Consequence: an over-long description on a non-existent issue answers
+        // 400, not 404. Documented in ADR 0018.
+        descriptionPolicy.validate(description);
         return repository.findById(id).map(existing -> {
             Issue updated = new Issue(
                 existing.id(),

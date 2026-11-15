@@ -23,3 +23,8 @@ quarkus.datasource.jdbc.url=jdbc:h2:file:./data/gauge;DB_CLOSE_DELAY=-1;DB_CLOSE
 # 00000001 on an empty database; ignored (continuity wins) once the DB holds
 # IDs at or above this value. Decimal or 0x-prefixed hex.
 # gauge.ids.start-offset=0x4000
+
+# Issue description length. false (default) caps descriptions at 4000 chars;
+# true lifts the cap to the database limit (1,000,000). Over-long descriptions
+# are rejected with 400 DESCRIPTION_TOO_LONG on both POST and PATCH.
+# gauge.issue.description.allow-long=false

@@ -22,7 +22,10 @@ public class Issue extends PanacheEntityBase {
     @Column(name = "title", nullable = false)
     public String title;
 
-    @Column(name = "description", length = 4000)
+    // Width matches IssueDescriptionPolicy.HARD_MAX_LENGTH. The application-level cap
+    // (4000 by default, lifted by gauge.issue.description.allow-long) is enforced before
+    // this column is ever reached, so the column is never the thing that fails a request.
+    @Column(name = "description", length = 1_000_000)
     public String description;
 
     @Column(name = "status", nullable = false, length = 20)
