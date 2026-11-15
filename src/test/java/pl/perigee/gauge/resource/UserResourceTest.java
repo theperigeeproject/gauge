@@ -7,19 +7,21 @@ import org.junit.jupiter.api.*;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.CoreMatchers.*;
 
+/**
+ * Default test profile: gauge.auth.enabled=false. SecurityFilter is a no-op and
+ * no SecurityContext is installed, so UserResource.isAdmin() sees a null context
+ * and answers 403.
+ *
+ * These cases therefore pin the "no identity" answers, not role enforcement.
+ * Real authorization coverage is UserResourceAuthTest, which runs with auth on.
+ *
+ * changePassword's blank-password 400 happens BEFORE the admin check. That is a
+ * pre-existing ordering, kept deliberately and not part of this change.
+ */
 @QuarkusTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class UserResourceTest {
-
-    // In test mode with security disabled:
-    // - /api/users/me: SecurityContext is null → 401
-    // - /api/users (GET): @RolesAllowed("admin") → 403
-    // - /api/users (POST): @RolesAllowed("admin") → 403
-    // - /api/users/{id}/password: blank password → 400 (checked before auth);
-    //   non-blank password with null SecurityContext → 403
-    // - /api/users/{id} (DELETE): @RolesAllowed("admin") → 403
 
     @Test @Order(1)
     void me() {

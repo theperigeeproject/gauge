@@ -1,6 +1,5 @@
 package pl.perigee.gauge.resource;
 
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -146,9 +145,17 @@ public class GaugePageResource {
 
     @GET
     @Path("/ui/users")
-    @RolesAllowed("admin")
     @Produces(MediaType.TEXT_HTML)
     public Response users() {
+        // In-code admin guard instead of @RolesAllowed (ADR 0019). /ui/* is
+        // authenticated-policy, so the HTTP layer already rejected anonymous
+        // callers; this only adds the role check.
+        if (!isAdmin()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .type(MediaType.TEXT_PLAIN)
+                    .entity("Only admins can view this page.")
+                    .build();
+        }
         org.thymeleaf.context.Context ctx = new org.thymeleaf.context.Context();
         ctx.setVariable("isAdmin", true);
         return Response.ok(templateEngine.process("users", ctx)).build();

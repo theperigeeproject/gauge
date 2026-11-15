@@ -2,7 +2,6 @@ package pl.perigee.gauge.resource;
 
 import pl.perigee.gauge.domain.User;
 import pl.perigee.gauge.service.UserService;
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -11,7 +10,6 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import org.jboss.logging.Logger;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -41,16 +39,26 @@ public class UserResource {
     }
 
     @GET
-    @RolesAllowed("admin")
-    public List<Map<String, String>> list() {
-        return service.findAll().stream()
+    public Response list() {
+        // Admin check FIRST, before any body/param validation (ADR 0019).
+        if (!isAdmin()) {
+            return forbidden();
+        }
+        return Response.ok(service.findAll().stream()
                 .map(u -> Map.of("id", u.id, "username", u.username, "role", u.role))
-                .toList();
+                .toList())
+                .build();
     }
 
     @POST
-    @RolesAllowed("admin")
     public Response create(Map<String, Object> body) {
+        // Admin check FIRST — a non-admin must get 403 even with a malformed body,
+        // exactly as it did when this was @RolesAllowed. Moving it below the null
+        // checks would answer 400 and leak validation results to unauthorized callers.
+        if (!isAdmin()) {
+            return forbidden();
+        }
+
         String username = (String) body.get("username");
         String password = (String) body.get("password");
         String role = (String) body.get("role");
@@ -94,8 +102,7 @@ public class UserResource {
         }
 
         // Non-admin users can only change their own password
-        boolean isAdmin = securityContext != null && securityContext.isUserInRole("admin");
-        if (!isAdmin) {
+        if (!isAdmin()) {
             String currentUsername = securityContext != null && securityContext.getUserPrincipal() != null
                     ? securityContext.getUserPrincipal().getName() : null;
             Optional<User> target = service.findById(id);
@@ -115,8 +122,11 @@ public class UserResource {
 
     @DELETE
     @Path("/{id}")
-    @RolesAllowed("admin")
     public Response delete(@PathParam("id") String id) {
+        // Admin check FIRST (ADR 0019). A non-admin gets 403 whether or not the id exists.
+        if (!isAdmin()) {
+            return forbidden();
+        }
         Optional<User> user = service.findById(id);
         if (user.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
@@ -134,5 +144,15 @@ public class UserResource {
         service.deleteById(id);
         LOG.infof("Deleted user: %s", username);
         return Response.noContent().build();
+    }
+
+    private boolean isAdmin() {
+        return securityContext != null && securityContext.isUserInRole("admin");
+    }
+
+    private Response forbidden() {
+        return Response.status(Response.Status.FORBIDDEN)
+                .entity(Map.of("error", "FORBIDDEN", "message", "Only admins can manage users."))
+                .build();
     }
 }

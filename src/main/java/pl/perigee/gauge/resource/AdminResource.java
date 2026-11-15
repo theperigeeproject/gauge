@@ -1,11 +1,12 @@
 package pl.perigee.gauge.resource;
 
 import pl.perigee.gauge.service.IdMigrationService;
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.SecurityContext;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 
 import java.util.Map;
@@ -13,11 +14,13 @@ import java.util.Map;
 @Path("/api/admin")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@RolesAllowed("admin")
 public class AdminResource {
 
     @Inject
     IdMigrationService migrationService;
+
+    @Context
+    SecurityContext securityContext;
 
     @Operation(
         operationId = "tracker_migrate_ids",
@@ -26,6 +29,12 @@ public class AdminResource {
     @POST
     @Path("/migrate-ids")
     public Response migrateIds(@QueryParam("confirm") boolean confirm) {
+        // Admin check FIRST, before the confirm flag (ADR 0019). When this was
+        // @RolesAllowed the check ran before the method body, so a non-admin never
+        // learned whether the confirm flag was present.
+        if (!isAdmin()) {
+            return forbidden();
+        }
         if (!confirm) {
             return Response.status(Response.Status.BAD_REQUEST)
                 .entity(Map.of("error", "CONFIRM_REQUIRED",
@@ -40,5 +49,15 @@ public class AdminResource {
                 .entity(Map.of("error", "MIGRATION_FAILED", "message", e.getMessage()))
                 .build();
         }
+    }
+
+    private boolean isAdmin() {
+        return securityContext != null && securityContext.isUserInRole("admin");
+    }
+
+    private Response forbidden() {
+        return Response.status(Response.Status.FORBIDDEN)
+            .entity(Map.of("error", "FORBIDDEN", "message", "Only admins can call this endpoint."))
+            .build();
     }
 }

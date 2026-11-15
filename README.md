@@ -95,6 +95,18 @@ Two parallel auth mechanisms:
 
 API endpoints also accept the session cookie, so a browser session works for both UI and API calls.
 
+### Authorization model
+
+Role checks are written **in code**, against the JAX-RS `SecurityContext`:
+
+```java
+if (!securityContext.isUserInRole("admin")) { ... }
+```
+
+`@RolesAllowed` is deliberately not used anywhere in this codebase. `/api/*` runs under a `permit` HTTP policy because `SecurityFilter` does its own Bearer authentication, and a permit policy means Quarkus never builds a `SecurityIdentity` for those requests — so `@RolesAllowed` denies unconditionally for API clients while still appearing to protect the endpoint. In-code checks read the context `SecurityFilter` actually populates and also work for session callers.
+
+Consequence worth knowing: a role check is a statement in the method body, so it is placed **first**, before parameter validation — an unauthorized caller gets `403`, never a `400` that reveals which fields are malformed. See `docs/adr/0019-no-roles-allowed.md`.
+
 ### API Key Restrictions
 
 User-created API keys can be **restricted to a single project** (and its descendants) with an access level:
@@ -177,7 +189,7 @@ Per-user project bookmarks. Add, remove, list, reset.
 
 ### Admin (`/api/admin`)
 
-ID migration from UUID to sequential hex-8. One-time, destructive, guarded by a JVM flag.
+ID migration from UUID to sequential hex-8. One-time, destructive, admin-only, and requires `?confirm=true` (without it the endpoint answers `400 CONFIRM_REQUIRED`). Back up the H2 file first.
 
 ## Docker
 
