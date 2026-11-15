@@ -24,3 +24,6 @@ dev.application.properties
 
 #db
 data/
+
+# Session handoff is local-only, like the rest of Perigee
+SESSION_HANDOFF.md
