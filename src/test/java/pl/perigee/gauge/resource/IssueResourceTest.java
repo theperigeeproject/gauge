@@ -71,8 +71,12 @@ class IssueResourceTest {
     }
 
     @Test @Order(9)
-    void listByProjectInvalidPriorityIgnored() {
-        given().when().get("/api/projects/" + projectId + "/issues?priority=INVALID").then().statusCode(200);
+    void listByProjectInvalidPriorityRejected() {
+        // Was called ...Ignored and expected 200: the filter silently dropped the unknown
+        // value and answered with a superset, which looks like a working query and is not
+        // one. Invalid input is now rejected. See 0000149B and ADR 0018.
+        given().when().get("/api/projects/" + projectId + "/issues?priority=INVALID")
+            .then().statusCode(400).body("error", is("INVALID_PRIORITY"));
     }
 
     @Test @Order(10)
