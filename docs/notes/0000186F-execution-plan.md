@@ -13,7 +13,7 @@ number of commits. The property that matters: at no point does the repo sit in a
 |---|---|---|---|
 | 1 | Status substrate: 4 status entities, 2 lookup entities, repositories, seeding; packaged DDL → `update` | none | no |
 | 2 | Status service: caches, registry, code↔id translation, removal policies | none (unused) | no |
-| 3 | Schema + migration: `status` int column, `statusCode` legacy, startup migration — needs explicit ALTERs, `update` will not rename | schema only, wire unchanged | **yes — irreversible** |
+| 3 | Schema + migration: nullable `statusId` column, `NEEDS_MIGRATION` fallback, on-demand migration behind an admin endpoint | schema only, wire unchanged | **yes — irreversible** |
 | 4 | Wire switchover: DTOs, InputParser, services speak codes | wire-compatible, internals change | yes |
 | 5 | Analysis + UI: counts map, data-driven tree columns, status pills | **response shape breaks** | yes |
 | 6 | Admin API: `/api/admin/statuses/{level}` CRUD, guards, both-outcome tests | new surface | no |
@@ -30,10 +30,22 @@ if 3 is wrong, the data is wrong (and only a migration test catches it); if 4 is
 behaviour is wrong (and the existing 574 tests catch it). Doing both in one commit makes a red
 test ambiguous between the two.
 
-**Increment 3 is the one that must not be rushed.** It writes to every row of four tables on boot,
-an unmatched code aborts startup, and — now that packaged DDL is `update` — Hibernate will not do the
-column rename or the type change. So increment 3 carries explicit ALTERs *and* a migration, and its
-rehearsal is a test that builds a pre-migration database by hand, boots, and asserts.
+**Increment 3 is the one that must not be rushed.** It adds a nullable `statusId` column to four
+tables, and fills it from the legacy code. It is the only increment that touches existing data.
+
+Two things make it survivable, and both are revision 5 (ADR 0020):
+
+- **It is not a boot-time gate.** A null `statusId` is a legal state that reads as
+  `NEEDS_MIGRATION`, so an upgraded database is correct and fully visible before anything runs. The
+  migration itself is an admin operation — `POST /api/admin/migrate-statuses`, or the dashboard
+  button — and it reports unmatched legacy codes instead of aborting anything.
+- **Nothing about it can run before the schema is finished.** Because it is on demand, it runs after
+  boot completes, which removes the startup-ordering hazard entirely rather than proving it safe.
+
+So the rehearsal is not "build a pre-migration database by hand". It is the idempotency and
+reporting properties, asserted in the suite, plus the fact that the migration is not a startup bean
+at all — a property a test can assert by reflection and cannot silently regress.
+
 
 ## Wire compatibility — read this before promising anything
 
@@ -96,9 +108,9 @@ answered. Those are implementation detail and I will pick and state the pick.
 
 | Risk | Mitigation |
 |---|---|
-| Migration aborts a live database on a code nobody expected | Tested exhaustively against hand-built pre-migration data; the throw names level, value and row count |
+| Migration leaves a row on a code nobody expected | The row stays on `NEEDS_MIGRATION` and the report names level, value and row count. Nothing aborts, nothing is guessed |
 | `generation=update` now governs DDL for every table in production | It is additive only — cannot drop or retype. A careless entity field can still add an unwanted column, so schema changes get reviewed, not just committed |
-| `update` cannot rename or retype a column, and increment 3 needs both | Increment 3 keeps explicit ALTERs in a startup bean (`IssueDescriptionColumnStartup` precedent) and settles their ordering against Hibernate empirically |
+| Nothing writes to entity tables before the schema exists | The migration is an admin operation, not a startup bean. Assumed ordering is replaced by construction |
 | Template breakage invisible to `mvn compile` | A real page render is a gate, not an optional extra |
 | Cache staleness after a status write | Rebuild from scratch; no invalidation logic to get wrong |
 | Admin endpoint fails open (ADR 0019) | Both-outcome tests, every endpoint, no exceptions |

@@ -6,7 +6,7 @@ Accepted
 Issue 0000186F. Tasklist 00001A5A. Supersedes ADR 15 for the storage model; ADR 15's
 semantics survive as seed data, not as enums.
 
-Revised four times before completion. All four revisions are recorded rather than edited away,
+Revised five times before completion. All five revisions are recorded rather than edited away,
 because each one is a decision someone will otherwise re-propose:
 
 1. **IDs** — status, progress-level and attitude ids became **internal ints outside `IdProvider`**
@@ -20,6 +20,19 @@ because each one is a decision someone will otherwise re-propose:
 4. **Migration column** — entities gain **`statusId`**, added alongside an untouched legacy `status`
    varchar. An earlier draft renamed the legacy column to `statusCode`; `update` cannot rename, and
    the ordered `ALTER` that would be needed is a startup-ordering hazard (§5). Owner's call.
+5. **Migration is optional, not a boot-time gate** — a null `statusId` is a legal state that
+   resolves to a seeded `NEEDS_MIGRATION` status, and the migration runs **on demand** from
+   `POST /api/admin/migrate-statuses` or a dashboard button. Three earlier positions died here:
+   - **abort startup on an unmatched legacy code** — killed because it turns a hand-edited row into
+     a dead application and forces the operator to make another commit-and-deploy to recover;
+   - **run the migration from `@Startup`/`@PostConstruct`** — killed because boot must not write to
+     entity tables, and its ordering against Hibernate's schema export was never provable. On demand
+     it runs strictly after boot, so the hazard is structurally impossible rather than hoped away;
+   - **a hand-built pre-migration database as the verification gate** — killed as manual work that
+     only the agent on one machine could repeat, which is not a gate.
+   The enabling piece is §3's `MIGRATION` attitude: the two axes already existed to say "treat rows
+   carrying this status differently", and "this row has not been migrated yet" is exactly that.
+
 
 ## Context
 
@@ -131,6 +144,12 @@ that a status row can reference them without a Java enum in the middle.
 | `EXCLUDED` | 1 |
 | `ARCHIVE` | 2 |
 | `TRASH` | 3 |
+| `MIGRATION` | 4 |
+
+`MIGRATION` is revision 5. It marks the one status per level that a null `statusId` resolves to
+(§5). It behaves like `REGULAR` for counting, priority bubbling and visibility — an unmigrated row is
+something needing attention, not something parked — and it is **not** gated by any of the flags (§7),
+because a configuration change must never make the fallback unavailable.
 
 Both are treated as fixed. A value arriving from the surface is validated by exact membership in
 the cached map (`contains(input.toUpperCase())`) and stored as a plain string. No coercion, no
@@ -184,21 +203,32 @@ Consequences of that choice, both accepted:
 - **`statusId` is nullable in the schema** — required, or the first startup after deploy cannot
   boot — but the API never accepts null (§4).
 
-At startup, for every entity row with `statusId IS NULL` and a non-null legacy `status`, the
-migration resolves the legacy code → the seeded status id for that level and writes it.
+**A null `statusId` is a legal, self-describing state — it is not a hole to be filled at boot.**
+Every read resolves it through the status service to that level's `NEEDS_MIGRATION` status
+(attitude `MIGRATION`, §3). An upgraded database therefore renders completely and truthfully
+*before* anything is migrated, which is what makes the migration optional.
 
-**An unmatched code is an exception, and startup aborts.** Not a warning, not a parking
-placeholder. The application seeds its own defaults, so every code in a database that was running
-this application is one of them; an unmatched value means someone wrote to the table by hand and
-the data is not what the code believes it is. The exception names the level, the offending value
-and the row count.
+The migration itself runs **on demand** — `POST /api/admin/migrate-statuses?confirm=true`, or the
+dashboard button — and for every entity row with `statusId IS NULL` and a non-null legacy `status`
+resolves the legacy code → the seeded status id and writes it. It is idempotent: it only touches
+null ids, so a second call does nothing and a partially migrated database completes.
 
-This makes the migration a hard gate on boot, which is why the migration is to be tested
-exhaustively — every level, every seeded code, mixed null/non-null, and the failure path.
+**An unmatched code is reported, never fatal.** The response carries one entry per distinct
+offending value with its level and row count, and those rows keep `statusId` null — so they keep
+rendering as `NEEDS_MIGRATION` and the operator can decide what they mean. The application seeds its
+own defaults, so every code this application ever wrote is resolvable; an unmatched value means
+somebody wrote to the table by hand, which is a data question, not a reason to refuse to boot or to
+fail an admin request.
+
+**It must not run at boot.** Boot must not write to entity tables — a startup bean runs before
+Hibernate is guaranteed to have finished its schema export, so on a real upgraded database it could
+query a `statusId` column that does not exist yet. On demand it runs strictly after boot, which
+makes that ordering hazard impossible instead of load-bearing.
 
 Projects are the special case: they have no legacy status column at all, so there is no code to
 migrate. Existing project rows get the seeded `OPENED` status. Nulls are tolerated in the column;
 the API rejects them.
+
 
 **Schema is created by Hibernate: the packaged `database.generation` becomes `update`.** The six
 new tables (four `status` tables plus both lookups) are declared only by their entities and get created on
@@ -234,6 +264,7 @@ status code or name.**
 | terminal | `progressLevel` ∈ {`FINISHED`, `FINALIZED`} |
 | parked | `attitudeType` = `EXCLUDED` |
 | active | not terminal and not parked |
+| unmigrated | `attitudeType` = `MIGRATION` — active in every other respect, so it bubbles priority and is shown |
 | hidden in listings by default | terminal — the current `DONE` rule: filtered out of the issue list, **still counted** in analysis |
 
 Bubbled priority (`BubbledPriority` stays a derived enum — it is a computed signal, not a status):
@@ -320,6 +351,17 @@ because there is nothing to decide.
 Invariant: every status table must retain at least one available status. An empty table makes
 creating that entity level impossible, and the failure would appear far from its cause.
 
+**The `MIGRATION` status is protected separately, and the above invariant does not cover it.**
+It cannot be removed — under any orphan policy, including `remove` — and it cannot be moved to a
+different attitude. Either change would leave a null `statusId` with nothing to resolve to, and
+every unmigrated row would become unrenderable, with the failure surfacing on a listing page rather
+than at the edit that caused it. Exactly one such status exists per level; a second is refused.
+
+That protection has one consequence worth stating: the "last available status" invariant must
+**not** count the migration status, or it could never fire — the fallback is available
+unconditionally (§7), so a level would always appear to have one status left even when it holds no
+real workflow status at all.
+
 ### 11. Admin surface
 
 One resource with a level path segment — `/api/admin/statuses/{level}`, `level` ∈
@@ -363,6 +405,21 @@ No compatibility fields. ADR 17's field table is superseded; its bubbled-priorit
 | task | `FAILED` | `HALTED` | `REGULAR` | 3 |
 | task | `CANCELED` | `FINALIZED` | `REGULAR` | 4 |
 
+Plus one migration status per level (revision 5), **last** in `precedenceValue` so it never pushes a
+real workflow status out of its order:
+
+| Level | code | progressLevel | attitude | precedence |
+|---|---|---|---|---|
+| project | `NEEDS_MIGRATION` | `HALTED` | `MIGRATION` | 2 |
+| issue | `NEEDS_MIGRATION` | `HALTED` | `MIGRATION` | 4 |
+| tasklist | `NEEDS_MIGRATION` | `HALTED` | `MIGRATION` | 4 |
+| task | `NEEDS_MIGRATION` | `HALTED` | `MIGRATION` | 5 |
+
+Its colour (`#fb923c`) is deliberately unlike every other seed: it reads as "attention", not
+"error". Like every other seed row it is insert-only — an operator may rename or recolour it, and
+the fallback follows the **attitude**, never the code, so a rename cannot break resolution.
+
+
 `CANCELED` and `FINALIZED` are terminal, so they inherit DONE's hidden-by-default rule. `FAILED`
 is `HALTED` but `REGULAR` — a failed task is a blocker, not a parked one; it keeps bubbling.
 
@@ -398,9 +455,11 @@ rewrites an existing row's editable properties.
   the four business tables, and no counter interaction exists.
 - **Rename is free, deletion is not.** Renaming a status touches one row. Removing one can touch
   every row in a table, hence §10.
-- **Startup can refuse to boot on unmatched data.** An unmatched legacy status code is fatal (§5):
-  continuing would mean silently picking a status the code does not actually understand. A missing
-  table is *not* fatal, because Hibernate creates it.
+- **Startup can never refuse to boot on status data.** An unmatched legacy status code is reported
+  by the on-demand migration and leaves the row on `NEEDS_MIGRATION`; it is not fatal (§5), and a
+  missing table is not fatal either, because Hibernate creates it.
+- **Boot performs no writes to entity tables.** The migration is an admin operation, not a startup
+  bean. Nothing about statuses runs before the schema is finished.
 - **Status entities carry a `Def` suffix: `IssueStatusDef`, `ProjectStatusDef`, `TasklistStatusDef`,
   `TaskStatusDef`** (plus `ProgressLevelDef` and `AttitudeTypeDef` for the lookups, and an unsuffixed
   `StatusBase` as the mapped superclass). The reason is the opposite of the earlier draft's: plain
