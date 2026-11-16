@@ -6,9 +6,17 @@ Accepted
 Issue 0000186F. Tasklist 00001A5A. Supersedes ADR 15 for the storage model; ADR 15's
 semantics survive as seed data, not as enums.
 
-Revised before first implementation: status, progress-level and attitude IDs are now **internal
-ints outside `IdProvider`** (§2). Earlier drafts gave them hex-8 IDs, which was wrong for reasons
-recorded there.
+Revised three times before first implementation. All three revisions are recorded rather than
+edited away, because each one is a decision someone will otherwise re-propose:
+
+1. **IDs** — status, progress-level and attitude ids became **internal ints outside `IdProvider`**
+   (§2). Earlier drafts gave them hex-8 IDs, which was wrong for reasons recorded there.
+2. **Schema creation** — the packaged `database.generation` becomes **`update`** and Hibernate creates
+   the tables (§5). Earlier drafts had a `CREATE TABLE` bean, then a startup guard that refused to
+   boot on a missing table. Both are gone.
+3. **Entity naming** — the status entities are **`…StatusDef`**, not plain `…Status` (Consequences).
+   An earlier draft claimed plain names were worth a sub-package; the ambiguity they create across
+   three increments is worse than a suffix.
 
 ## Context
 
@@ -169,17 +177,30 @@ Projects are the special case: they have no status today at all, so there is no 
 Existing project rows get the seeded `OPENED` status. Nulls are tolerated in the column; the API
 rejects them.
 
-**Schema presence is checked at startup, never assumed and never created.** The packaged
-configuration ships `quarkus.hibernate-orm.database.generation=none`, so nothing is auto-created in
-production. A startup guard reads all six tables; if any is unreadable the application **refuses to
-start**, naming the table that could not be read and distinguishing a missing schema from an
-unreachable database. Statuses cannot be cached without their tables, and a tracker that boots with
-half its state missing would answer requests wrongly before anyone noticed.
+**Schema is created by Hibernate: the packaged `database.generation` becomes `update`.** The five
+new tables (`status` tables plus both lookups) are declared only by their entities and get created on
+first boot, exactly like every other table in the application. No `CREATE TABLE` bean, no hand-written
+DDL, one description of the schema.
 
-Deliberately rejected: an `CREATE TABLE IF NOT EXISTS` bean (the `FavoritesTableStartup` pattern),
-which would be a second description of the schema kept in sync by hand; and flipping the packaged
-generation to `update`, which would change DDL behaviour for every table in the system, not just
-these six. The operator owns the schema; a missing table is not an invitation to invent one.
+This reverses two earlier proposals, and the reversal is deliberate:
+
+- **a `CREATE TABLE IF NOT EXISTS` bean** (the `FavoritesTableStartup` pattern) — rejected, because
+  six hand-written tables would be a second description of the schema, kept in sync by eye;
+- **a startup guard that refuses to boot when a table is missing** — rejected as unnecessary once
+  Hibernate creates the tables itself. It could never fire in a correctly deployed instance, and a
+  check that cannot fire is dead code.
+
+Consequences that must not be lost:
+
+- `update` is **additive, never destructive and never renaming**. It creates missing tables and adds
+  missing columns. It will not narrow a column, drop one, or rename one.
+- Therefore the §5 migration still needs explicit SQL for the one thing `update` cannot do: the old
+  `status` code column has to become `statusCode` before the new `status` int column can occupy that
+  name. `IssueDescriptionColumnStartup` is the precedent for raw DDL in a startup bean. The exact
+  ordering against Hibernate's own schema update has to be settled empirically in that increment —
+  not assumed.
+- Test isolation is unaffected: `src/test/resources/application.properties` sets
+  `drop-and-create` and outranks the packaged file, so tests keep recreating the schema.
 
 ### 6. Semantics are carried by progressLevel + attitudeType, never by code
 
@@ -326,8 +347,8 @@ rewrites an existing row's editable properties.
   as §6 definitions. Nothing in it should be read as a schema statement any more.
 - **ADR 17's field table is superseded.** Its bubbled-priority resolution is unchanged in meaning
   and now expressed through progress/attitude.
-- **The `…Status` enums are deleted, not renamed.** `IssueStatus`, `TasklistStatus`, `TaskStatus`
-  become entity classes; `ProjectStatus` is new. Seed codes are string constants in the seeder.
+- **The `…Status` enums are deleted, not renamed.** The entities are `…StatusDef` and live beside
+  them; `ProjectStatusDef` is new. Seed codes are string constants in the seeder.
 - **`switch` statements on status die.** `IssueService.statusOrder`, the counting switch in
   `ProjectAnalysisService`, `InputParser.issueStatus` and the `pill-*` CSS classes all go away,
   replaced by `precedenceValue`, the counts map, cache lookup, and data-driven pill styling. This
@@ -343,14 +364,19 @@ rewrites an existing row's editable properties.
   the four business tables, and no counter interaction exists.
 - **Rename is free, deletion is not.** Renaming a status touches one row. Removing one can touch
   every row in a table, hence §10.
-- **Startup can now refuse to boot, for two reasons.** An unmatched `statusCode` is fatal, and so is
-  a missing status table (§5). Both are accepted for the same reason: continuing would mean guessing
-  about data the code says it understands. The difference is who fixes it — the first by cleaning or
-  extending the data, the second by creating the schema.
-- **Entity naming is suffix-free, at the cost of a sub-package.** The status entities are exactly
-  `IssueStatus`, `ProjectStatus`, `TasklistStatus`, `TaskStatus` — no `…Definition` suffix — which
-  forces them into `pl.perigee.gauge.domain.status` while the same-named enums still occupy
-  `pl.perigee.gauge.domain`. The duplication lasts only until the enums are deleted.
+- **Startup can refuse to boot on unmatched data.** An unmatched `statusCode` is fatal (§5):
+  continuing would mean silently picking a status the code does not actually understand. A missing
+  table is *not* fatal, because Hibernate creates it.
+- **Status entities carry a `Def` suffix: `IssueStatusDef`, `ProjectStatusDef`, `TasklistStatusDef`,
+  `TaskStatusDef`** (plus `ProgressLevelDef` and `AttitudeTypeDef` for the lookups, and an unsuffixed
+  `StatusBase` as the mapped superclass). The reason is the opposite of the earlier draft's: plain
+  names would collide with the same-named enums for three increments, forcing fully-qualified
+  references and aliasing wherever both appear — and that ambiguity is a bug farm, which is worse
+  than a suffix. `Def` is short for *definition*, which is also the accurate reading: these rows
+  define what a status is.
+- **The suffix dies with the enums.** When the enums are deleted in increment 4 nothing forces a
+  rename, but nothing forbids it either: dropping `Def` at that point is a mechanical rename, and if
+  it is ever done it happens **after** the enums are gone, never before.
 - **Templates are not covered by `mvn compile`.** The tree's counter columns are generated from
   status data, so a broken template is only visible on a real page hit. Verification needs the app
   running, not just a green build.

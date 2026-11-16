@@ -11,9 +11,9 @@ number of commits. The property that matters: at no point does the repo sit in a
 
 | # | Increment | Behaviour change | Risky? |
 |---|---|---|---|
-| 1 | Status substrate: 4 status entities, 2 lookup entities, repositories, schema guard, seeding | boot can now refuse on a missing schema | mild |
+| 1 | Status substrate: 4 status entities, 2 lookup entities, repositories, seeding; packaged DDL → `update` | none | no |
 | 2 | Status service: caches, registry, code↔id translation, removal policies | none (unused) | no |
-| 3 | Schema + migration: `status` int column, `statusCode` legacy, startup migration | schema only, wire unchanged | **yes — irreversible** |
+| 3 | Schema + migration: `status` int column, `statusCode` legacy, startup migration — needs explicit ALTERs, `update` will not rename | schema only, wire unchanged | **yes — irreversible** |
 | 4 | Wire switchover: DTOs, InputParser, services speak codes | wire-compatible, internals change | yes |
 | 5 | Analysis + UI: counts map, data-driven tree columns, status pills | **response shape breaks** | yes |
 | 6 | Admin API: `/api/admin/statuses/{level}` CRUD, guards, both-outcome tests | new surface | no |
@@ -31,8 +31,9 @@ behaviour is wrong (and the existing 574 tests catch it). Doing both in one comm
 test ambiguous between the two.
 
 **Increment 3 is the one that must not be rushed.** It writes to every row of four tables on boot,
-and an unmatched code aborts startup. Rehearsal is in step 1's last task: a test that seeds a
-pre-migration database by hand, boots, and asserts.
+an unmatched code aborts startup, and — now that packaged DDL is `update` — Hibernate will not do the
+column rename or the type change. So increment 3 carries explicit ALTERs *and* a migration, and its
+rehearsal is a test that builds a pre-migration database by hand, boots, and asserts.
 
 ## Wire compatibility — read this before promising anything
 
@@ -96,8 +97,8 @@ answered. Those are implementation detail and I will pick and state the pick.
 | Risk | Mitigation |
 |---|---|
 | Migration aborts a live database on a code nobody expected | Tested exhaustively against hand-built pre-migration data; the throw names level, value and row count |
-| App boots on a database without the six status tables | Startup guard reads them and refuses to boot with a message naming the table and the reason (ADR 0020 §5). Nothing is auto-created |
-| The startup guard runs before Hibernate exports DDL, failing a healthy first boot | Verify on the first test run; move the guard rather than swallow the exception |
+| `generation=update` now governs DDL for every table in production | It is additive only — cannot drop or retype. A careless entity field can still add an unwanted column, so schema changes get reviewed, not just committed |
+| `update` cannot rename or retype a column, and increment 3 needs both | Increment 3 keeps explicit ALTERs in a startup bean (`IssueDescriptionColumnStartup` precedent) and settles their ordering against Hibernate empirically |
 | Template breakage invisible to `mvn compile` | A real page render is a gate, not an optional extra |
 | Cache staleness after a status write | Rebuild from scratch; no invalidation logic to get wrong |
 | Admin endpoint fails open (ADR 0019) | Both-outcome tests, every endpoint, no exceptions |
