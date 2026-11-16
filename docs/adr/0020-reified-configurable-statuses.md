@@ -169,6 +169,18 @@ Projects are the special case: they have no status today at all, so there is no 
 Existing project rows get the seeded `OPENED` status. Nulls are tolerated in the column; the API
 rejects them.
 
+**Schema presence is checked at startup, never assumed and never created.** The packaged
+configuration ships `quarkus.hibernate-orm.database.generation=none`, so nothing is auto-created in
+production. A startup guard reads all six tables; if any is unreadable the application **refuses to
+start**, naming the table that could not be read and distinguishing a missing schema from an
+unreachable database. Statuses cannot be cached without their tables, and a tracker that boots with
+half its state missing would answer requests wrongly before anyone noticed.
+
+Deliberately rejected: an `CREATE TABLE IF NOT EXISTS` bean (the `FavoritesTableStartup` pattern),
+which would be a second description of the schema kept in sync by hand; and flipping the packaged
+generation to `update`, which would change DDL behaviour for every table in the system, not just
+these six. The operator owns the schema; a missing table is not an invitation to invent one.
+
 ### 6. Semantics are carried by progressLevel + attitudeType, never by code
 
 The four locked INACTIVE rules from ADR 15 must survive a world where the status names are
@@ -331,8 +343,14 @@ rewrites an existing row's editable properties.
   the four business tables, and no counter interaction exists.
 - **Rename is free, deletion is not.** Renaming a status touches one row. Removing one can touch
   every row in a table, hence §10.
-- **Startup can now refuse to boot.** An unmatched `statusCode` is fatal (§5). Accepted: it means
-  the data disagrees with the code, and continuing would silently pick a status.
+- **Startup can now refuse to boot, for two reasons.** An unmatched `statusCode` is fatal, and so is
+  a missing status table (§5). Both are accepted for the same reason: continuing would mean guessing
+  about data the code says it understands. The difference is who fixes it — the first by cleaning or
+  extending the data, the second by creating the schema.
+- **Entity naming is suffix-free, at the cost of a sub-package.** The status entities are exactly
+  `IssueStatus`, `ProjectStatus`, `TasklistStatus`, `TaskStatus` — no `…Definition` suffix — which
+  forces them into `pl.perigee.gauge.domain.status` while the same-named enums still occupy
+  `pl.perigee.gauge.domain`. The duplication lasts only until the enums are deleted.
 - **Templates are not covered by `mvn compile`.** The tree's counter columns are generated from
   status data, so a broken template is only visible on a real page hit. Verification needs the app
   running, not just a green build.

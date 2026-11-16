@@ -11,7 +11,7 @@ number of commits. The property that matters: at no point does the repo sit in a
 
 | # | Increment | Behaviour change | Risky? |
 |---|---|---|---|
-| 1 | Status substrate: 4 status entities, 2 lookup entities, repositories, seeding | none | no |
+| 1 | Status substrate: 4 status entities, 2 lookup entities, repositories, schema guard, seeding | boot can now refuse on a missing schema | mild |
 | 2 | Status service: caches, registry, code↔id translation, removal policies | none (unused) | no |
 | 3 | Schema + migration: `status` int column, `statusCode` legacy, startup migration | schema only, wire unchanged | **yes — irreversible** |
 | 4 | Wire switchover: DTOs, InputParser, services speak codes | wire-compatible, internals change | yes |
@@ -96,6 +96,8 @@ answered. Those are implementation detail and I will pick and state the pick.
 | Risk | Mitigation |
 |---|---|
 | Migration aborts a live database on a code nobody expected | Tested exhaustively against hand-built pre-migration data; the throw names level, value and row count |
+| App boots on a database without the six status tables | Startup guard reads them and refuses to boot with a message naming the table and the reason (ADR 0020 §5). Nothing is auto-created |
+| The startup guard runs before Hibernate exports DDL, failing a healthy first boot | Verify on the first test run; move the guard rather than swallow the exception |
 | Template breakage invisible to `mvn compile` | A real page render is a gate, not an optional extra |
 | Cache staleness after a status write | Rebuild from scratch; no invalidation logic to get wrong |
 | Admin endpoint fails open (ADR 0019) | Both-outcome tests, every endpoint, no exceptions |
