@@ -28,6 +28,19 @@ public class Project extends PanacheEntityBase {
     @Column(name = "removalLock", length = 20)
     public String removalLock;
 
+    /**
+     * The project's lifecycle status — an internal {@code ProjectStatusDef} id (ADR 0020 §5).
+     *
+     * <p>Projects had no status before this, so there is no legacy code column to migrate from:
+     * existing rows simply get the seeded {@code OPENED} status. Nullable in the schema because an
+     * upgraded database starts empty here; the API never accepts null.
+     *
+     * <p><b>This does not bubble.</b> A child's status never changes its parent's — lifecycle is
+     * per-node and set deliberately. See {@code ProjectStatusDef}.
+     */
+    @Column(name = "statusId")
+    public Integer statusId;
+
     public Project() {
     }
 
@@ -51,6 +64,7 @@ public class Project extends PanacheEntityBase {
     public String description() { return description; }
     public String parentId() { return parentId; }
     public String removalLock() { return removalLock != null ? removalLock : ""; }
+    public Integer statusId() { return statusId; }
 
     public static Project create(String name, String description, String parentId) {
         return new Project(

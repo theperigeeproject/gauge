@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "issues")
-public class Issue extends PanacheEntityBase {
+public class Issue extends PanacheEntityBase implements StatusBearing {
 
     @Id
     @Column(name = "id", length = 36)
@@ -28,8 +28,20 @@ public class Issue extends PanacheEntityBase {
     @Column(name = "description", length = 1_000_000)
     public String description;
 
-    @Column(name = "status", nullable = false, length = 20)
+    /**
+     * LEGACY, pre-migration status code. Untouched by the new model and never written again.
+     * Kept because renaming a column is something Hibernate's {@code update} cannot do (ADR 0020 §5).
+     * Read only by {@code StatusDataMigrationStartup}.
+     */
+    @Column(name = "status", length = 20)
     public String status;
+
+    /**
+     * The real status referent: an internal {@code IssueStatusDef} id (ADR 0020 §2/§5).
+     * Nullable because an upgraded database starts empty here; the API never accepts null.
+     */
+    @Column(name = "statusId")
+    public Integer statusId;
 
     @Column(name = "priority", nullable = false, length = 20)
     public String priority;
@@ -60,6 +72,15 @@ public class Issue extends PanacheEntityBase {
     public String description() { return description; }
     public IssueStatus status() { return IssueStatus.valueOf(status); }
     public Priority priority() { return Priority.valueOf(priority); }
+
+    @Override
+    public Integer statusId() { return statusId; }
+
+    @Override
+    public void setStatusId(Integer statusId) { this.statusId = statusId; }
+
+    @Override
+    public String legacyStatusCode() { return status; }
 
     public static Issue create(String projectId, String title, String description, Priority priority) {
         return new Issue(

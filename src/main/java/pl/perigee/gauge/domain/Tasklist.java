@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "tasklists")
-public class Tasklist extends PanacheEntityBase {
+public class Tasklist extends PanacheEntityBase implements StatusBearing {
 
     @Id
     @Column(name = "id", length = 36)
@@ -22,8 +22,13 @@ public class Tasklist extends PanacheEntityBase {
     @Column(name = "title", nullable = false)
     public String title;
 
-    @Column(name = "status", nullable = false, length = 20)
+    /** LEGACY, pre-migration status code. Read only by the migration (ADR 0020 §5). */
+    @Column(name = "status", length = 20)
     public String status;
+
+    /** The real status referent: an internal {@code TasklistStatusDef} id. Nullable until migrated. */
+    @Column(name = "statusId")
+    public Integer statusId;
 
     @Column(name = "decomposesTaskId", length = 36)
     public String decomposesTaskId;
@@ -51,6 +56,15 @@ public class Tasklist extends PanacheEntityBase {
     public String title() { return title; }
     public TasklistStatus status() { return TasklistStatus.valueOf(status); }
     public String decomposesTaskId() { return decomposesTaskId; }
+
+    @Override
+    public Integer statusId() { return statusId; }
+
+    @Override
+    public void setStatusId(Integer statusId) { this.statusId = statusId; }
+
+    @Override
+    public String legacyStatusCode() { return status; }
 
     public static Tasklist create(String issueId, String title, String decomposesTaskId) {
         return new Tasklist(
