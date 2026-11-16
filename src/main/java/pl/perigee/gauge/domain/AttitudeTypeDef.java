@@ -13,7 +13,7 @@ import jakarta.persistence.UniqueConstraint;
  * A fixed attitude — how a status is <em>treated</em> as opposed to where it sits in the workflow.
  * Seed values, never user-editable, no surface API (ADR 0020 §3).
  *
- * <p>{@code REGULAR 0, EXCLUDED 1, ARCHIVE 2, TRASH 3}.
+ * <p>{@code REGULAR 0, EXCLUDED 1, ARCHIVE 2, TRASH 3, MIGRATION 4}.
  *
  * <ul>
  *   <li>{@code REGULAR} — ordinary; participates in counting and priority bubbling.</li>
@@ -22,6 +22,10 @@ import jakarta.persistence.UniqueConstraint;
  *   <li>{@code ARCHIVE} / {@code TRASH} — omitted from <b>all</b> entity reads. Rows are retained;
  *       they simply never surface. One predicate applies this, as close to persistence as possible
  *       without binding to H2.</li>
+ *   <li>{@code MIGRATION} — a row that predates the reified status model and has no status id yet.
+ *       Behaves like {@code REGULAR} for counting and bubbling (an unmigrated row is something
+ *       needing attention, not something parked), cannot be deleted, and is not gated by any
+ *       feature flag. It is what makes the migration optional rather than a boot-time gate.</li>
  * </ul>
  *
  * <p>Referenced by {@code name} for the same reason as {@link ProgressLevelDef}: the set is fixed,

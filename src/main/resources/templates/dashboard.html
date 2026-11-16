@@ -52,6 +52,22 @@
         </div>
     </div>
 
+    <!-- Admin only. Renders for nobody else; the endpoint guards itself (ADR 0019), so this is
+         cosmetic, never the security boundary. -->
+    <div class="card" th:if="${isAdmin}" style="margin-bottom: 24px;">
+        <div class="card-body">
+            <h2>Maintenance</h2>
+            <p class="muted small">
+                Give a status id to every issue, tasklist, task and project created before statuses
+                became configurable. Unmigrated rows already read as <code>NEEDS_MIGRATION</code>, so
+                this is optional — run it whenever convenient. Running it twice changes nothing.
+            </p>
+            <button class="btn" type="button" id="btn-migrate-statuses">Migrate statuses</button>
+            <div id="migrate-statuses-result" class="status-box"
+                 style="margin-top: 12px; display: none;"></div>
+        </div>
+    </div>
+
     <script>
     function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
@@ -111,6 +127,52 @@
             console.error('Dashboard refresh failed', e);
         }
     }
+
+    function summarize(map) {
+        var keys = Object.keys(map || {});
+        if (keys.length === 0) { return 'nothing'; }
+        return keys.map(function(k) { return k + ' ' + map[k]; }).join(', ');
+    }
+
+    async function migrateStatuses() {
+        if (!confirm('Give a status id to every unmigrated row? This writes to the database '
+                   + 'but deletes nothing, and is safe to repeat.')) {
+            return;
+        }
+        var box = document.getElementById('migrate-statuses-result');
+        if (!box) { return; }
+        box.style.display = 'block';
+        box.textContent = 'Running\u2026';
+        try {
+            var res = await fetch('/api/admin/migrate-statuses?confirm=true', { method: 'POST' });
+            var body = await res.json();
+            if (!res.ok) {
+                box.textContent = 'Failed: ' + (body.message || ('HTTP ' + res.status));
+                return;
+            }
+            var html = '<div><strong>Migrated</strong> ' + esc(summarize(body.migrated)) + '</div>';
+            if (body.unresolved && body.unresolved.length > 0) {
+                html += '<div style="margin-top:8px;"><strong>Unmatched legacy codes</strong>'
+                      + ' \u2014 these rows keep reading as NEEDS_MIGRATION:</div><ul>';
+                body.unresolved.forEach(function(u) {
+                    html += '<li>' + esc(u.level) + ' \u00b7 ' + esc(u.code)
+                          + ' \u00b7 ' + u.rowCount + ' row(s)</li>';
+                });
+                html += '</ul>';
+            } else {
+                html += '<div style="margin-top:8px;">Nothing left unmigrated.</div>';
+            }
+            box.innerHTML = html;
+            refresh();
+        } catch (e) {
+            box.textContent = 'Failed: ' + e;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var btn = document.getElementById('btn-migrate-statuses');
+        if (btn) { btn.addEventListener('click', migrateStatuses); }
+    });
 
     document.addEventListener('DOMContentLoaded', refresh);
     </script>

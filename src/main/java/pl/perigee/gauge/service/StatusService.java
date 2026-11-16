@@ -65,6 +65,15 @@ public class StatusService {
 
     private static final Logger LOG = Logger.getLogger(StatusService.class);
 
+    /** The seed code a null status id resolves to. Mirrors {@code StatusSeedStartup}. */
+    static final String NEEDS_MIGRATION = "NEEDS_MIGRATION";
+
+    /**
+     * The attitude that marks the fallback status. Resolved by attitude, not code, so renaming the
+     * status is free (ADR 0020 §2/§6). Exactly one per level table — enforced on create and update.
+     */
+    static final String MIGRATION_ATTITUDE = "MIGRATION";
+
     // ── Flags (ADR 0020 §7). Defaults are the decided ones. ──────────
     @ConfigProperty(name = "gauge.status.extended-progress-levels", defaultValue = "false")
     boolean extendedProgressLevels;
@@ -112,7 +121,7 @@ public class StatusService {
         return progressLevels;
     }
 
-    /** {@code name -> ordinal} for the four fixed attitudes. */
+    /** {@code name -> ordinal} for the five fixed attitudes. */
     public Map<String, Integer> attitudeTypes() {
         ensureLoaded();
         return attitudeTypes;
@@ -221,6 +230,10 @@ public class StatusService {
         return switch (status.attitudeType) {
             case "ARCHIVE" -> archiveEnabled;
             case "TRASH" -> trashEnabled;
+            // MIGRATION is deliberately never gated. It is the resolution target for every row whose
+            // statusId is still null, so a flag flip must not be able to make the fallback point at
+            // an unavailable status — that would turn a configuration change into unrenderable rows.
+            case "MIGRATION" -> true;
             default -> true;
         } && (!isExtendedProgressLevel(status.progressLevel) || extendedProgressLevels);
     }
@@ -315,32 +328,66 @@ public class StatusService {
     /**
      * The surface identity of a stored status id.
      *
-     * <p>Never returns the id itself. An unknown id is a bug in a caller — it means an entity holds
-     * a status that does not exist — so it fails loudly rather than printing {@code "null"} into a
-     * response.
+     * <p><b>A null id is legal and means "not migrated yet".</b> It resolves to the level's
+     * {@code NEEDS_MIGRATION} status rather than throwing. That is what makes the migration optional:
+     * an upgraded database whose rows have never been migrated still renders every row, correctly
+     * labelled, and the application never treats its own data as corruption.
+     *
+     * <p>A <em>non-null</em> id that matches no row is still a real bug — an entity holding a status
+     * that does not exist — and stays loud for exactly that reason.
      */
     public String codeFor(StatusLevel level, Integer id) {
+        return byId(level, id).code;
+    }
+
+    /** True when this row's status was never brought over from the legacy code column. */
+    public boolean isUnmigrated(Integer id) {
+        return id == null;
+    }
+
+    /**
+     * The status row stored on an entity, for reading its axes. Null resolves to
+     * {@code NEEDS_MIGRATION} (see {@link #codeFor}).
+     *
+     * <p><b>Every caller must come through here.</b> A DTO mapper or a template that does
+     * {@code repo.findById(statusId)} directly bypasses the fallback and turns a legal, unmigrated
+     * row into an exception or a blank — which is the whole failure this method exists to prevent.
+     */
+    public StatusBase byId(StatusLevel level, Integer id) {
         if (id == null) {
-            throw new IllegalStateException("Entity has no status set for level " + level.wire + ".");
+            return migrationStatus(level);
         }
         for (StatusBase candidate : all(level)) {
             if (id.equals(candidate.id)) {
-                return candidate.code;
+                return candidate;
             }
         }
         throw new IllegalStateException(
             "No " + level.wire + " status with id " + id + " exists; the referencing row is corrupt.");
     }
 
-    /** The status row stored on an entity, for reading its axes. */
-    public StatusBase byId(StatusLevel level, Integer id) {
+    /**
+     * The status a null {@code statusId} resolves to for this level.
+     *
+     * <p><b>Found by attitude, not by code.</b> ADR 0020 §6 forbids behaviour depending on a status
+     * name, and this is behaviour: if the lookup used {@code "NEEDS_MIGRATION"} as a literal, renaming
+     * the status — which §2 says is free — would silently break the fallback for every unmigrated row.
+     * The {@code MIGRATION} attitude is the actual identity.
+     *
+     * <p>Resolved from {@link #all}, never from {@link #available}: the fallback must not depend on a
+     * feature flag. If no migration status exists the database is genuinely broken — every database is
+     * seeded with one — so this fails loudly rather than inventing a default.
+     */
+    public StatusBase migrationStatus(StatusLevel level) {
         for (StatusBase candidate : all(level)) {
-            if (id != null && id.equals(candidate.id)) {
+            if (MIGRATION_ATTITUDE.equals(candidate.attitudeType)) {
                 return candidate;
             }
         }
         throw new IllegalStateException(
-            "No " + level.wire + " status with id " + id + " exists; the referencing row is corrupt.");
+            "No " + level.wire + " status carries attitude " + MIGRATION_ATTITUDE + ". Every database "
+                + "is seeded with one by StatusSeedStartup; if it is missing the status table was "
+                + "modified outside the application, and rows without a status id cannot be resolved.");
     }
 
     private static String codesOf(List<StatusBase> statuses) {
@@ -459,10 +506,28 @@ public class StatusService {
     public void delete(StatusLevel level, String code, RemovalPolicy policy, String migrateToCode) {
         StatusBase status = requireAnyStatus(level, code);
 
+        // Refused before the orphan policy is even considered. This is not the "last available
+        // status" invariant — it is about null statusId having somewhere to resolve to. Deleting
+        // the fallback would make every unmigrated row unrenderable, and the failure would appear
+        // in a listing page, nowhere near its cause.
+        if (MIGRATION_ATTITUDE.equals(status.attitudeType)) {
+            throw new ConflictException(
+                "MIGRATION_STATUS_PROTECTED",
+                "Status '" + status.code + "' cannot be removed: it is what a " + level.wire
+                    + " row without a status id resolves to. Every unmigrated row would become "
+                    + "unrenderable.");
+        }
+
         // Invariant: a level with no available status becomes impossible to create rows for, and the
         // failure would surface far from its cause. Refuse rather than allow the empty state.
+        //
+        // The migration fallback is excluded from the count on purpose. It is always available (it
+        // must be, or null status ids become unrenderable) so counting it here would make this
+        // invariant unreachable — and a level left holding nothing but "needs migration" is exactly
+        // the unusable state this guard exists to prevent.
         long availableLeft = available(level).stream()
             .filter(s -> !s.code.equalsIgnoreCase(status.code))
+            .filter(s -> !MIGRATION_ATTITUDE.equals(s.attitudeType))
             .count();
         if (availableLeft == 0) {
             throw new ConflictException(
@@ -594,6 +659,33 @@ public class StatusService {
         if ("TRASH".equals(attitude) && !trashEnabled) {
             throw new ValidationException(
                 "ATTITUDE_DISABLED", "Attitude TRASH requires gauge.status.trash-enabled=true."
+            );
+        }
+        // Exactly one MIGRATION status per level: it IS the fallback target, so a second one would
+        // make migrationStatus() ambiguous. Renaming or recolouring the existing one stays fine —
+        // this only forbids a second claim on the attitude.
+        if (MIGRATION_ATTITUDE.equals(attitude)) {
+            for (StatusBase other : all(level)) {
+                if (MIGRATION_ATTITUDE.equals(other.attitudeType)
+                    && (current == null || !other.code.equalsIgnoreCase(current.code))) {
+                    throw new ConflictException(
+                        "DUPLICATE_MIGRATION_STATUS",
+                        "A " + level.wire + " status with attitude MIGRATION already exists ('"
+                            + other.code + "'). A level has exactly one."
+                    );
+                }
+            }
+        }
+        // The reverse hazard: moving the fallback status to another attitude would leave no
+        // MIGRATION status behind, and every unmigrated row would throw on the next read — far from
+        // the edit that caused it.
+        if (current != null && MIGRATION_ATTITUDE.equals(current.attitudeType)
+            && !MIGRATION_ATTITUDE.equals(attitude)) {
+            throw new ConflictException(
+                "MIGRATION_STATUS_PROTECTED",
+                "Status '" + current.code + "' carries attitude MIGRATION and cannot be reassigned to "
+                    + "another attitude: it is what a " + level.wire + " row without a status id "
+                    + "resolves to."
             );
         }
         return code;

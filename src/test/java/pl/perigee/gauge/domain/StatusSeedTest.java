@@ -59,22 +59,25 @@ class StatusSeedTest {
 
     @Test
     void everyTableIsSeededWithTheExpectedNumberOfRows() {
-        assertEquals(2, projectStatusRepository.count(), "project statuses");
-        assertEquals(4, issueStatusRepository.count(), "issue statuses");
-        assertEquals(4, tasklistStatusRepository.count(), "tasklist statuses");
-        assertEquals(5, taskStatusRepository.count(), "task statuses");
+        assertEquals(3, projectStatusRepository.count(), "project statuses");
+        assertEquals(5, issueStatusRepository.count(), "issue statuses");
+        assertEquals(5, tasklistStatusRepository.count(), "tasklist statuses");
+        assertEquals(6, taskStatusRepository.count(), "task statuses");
         assertEquals(6, progressLevelRepository.count(), "progress levels");
-        assertEquals(4, attitudeTypeRepository.count(), "attitudes");
+        assertEquals(5, attitudeTypeRepository.count(), "attitudes");
     }
 
     // ── 2. Codes per level ───────────────────────────────────────────
 
     @Test
     void codesPerLevelMatchTheDocumentedSeeds() {
-        assertEquals(Set.of("OPENED", "CLOSED"), codes(projectStatusRepository.listAll()));
-        assertEquals(Set.of("TODO", "DOING", "DONE", "INACTIVE"), codes(issueStatusRepository.listAll()));
-        assertEquals(Set.of("TODO", "DOING", "DONE", "CANCELED"), codes(tasklistStatusRepository.listAll()));
-        assertEquals(Set.of("TODO", "DOING", "DONE", "FAILED", "CANCELED"),
+        assertEquals(Set.of("OPENED", "CLOSED", "NEEDS_MIGRATION"),
+            codes(projectStatusRepository.listAll()));
+        assertEquals(Set.of("TODO", "DOING", "DONE", "INACTIVE", "NEEDS_MIGRATION"),
+            codes(issueStatusRepository.listAll()));
+        assertEquals(Set.of("TODO", "DOING", "DONE", "CANCELED", "NEEDS_MIGRATION"),
+            codes(tasklistStatusRepository.listAll()));
+        assertEquals(Set.of("TODO", "DOING", "DONE", "FAILED", "CANCELED", "NEEDS_MIGRATION"),
             codes(taskStatusRepository.listAll()));
     }
 
@@ -116,7 +119,7 @@ class StatusSeedTest {
         allStatuses.addAll(tasklistStatusRepository.listAll());
         allStatuses.addAll(taskStatusRepository.listAll());
 
-        assertEquals(15, allStatuses.size(), "2 + 4 + 4 + 5 statuses seeded");
+        assertEquals(19, allStatuses.size(), "3 + 5 + 5 + 6 statuses seeded");
         for (StatusBase s : allStatuses) {
             assertTrue(levels.contains(s.progressLevel),
                 s.code + " names unknown progress level '" + s.progressLevel + "'");
@@ -157,7 +160,8 @@ class StatusSeedTest {
 
         Map<String, Integer> attitudes = attitudeTypeRepository.listAll().stream()
             .collect(Collectors.toMap(a -> a.name, a -> a.ordinal));
-        assertEquals(Map.of("REGULAR", 0, "EXCLUDED", 1, "ARCHIVE", 2, "TRASH", 3), attitudes);
+        assertEquals(Map.of("REGULAR", 0, "EXCLUDED", 1, "ARCHIVE", 2, "TRASH", 3, "MIGRATION", 4),
+            attitudes);
     }
 
     // ── 7. Internal int identity, not IdProvider hex-8 ───────────────

@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * the two axes as semantics, and removal policies.
  *
  * <p>Default profile. Auth is irrelevant here and the schema is built by {@code drop-and-create},
- * so the seeder has already produced the 25 rows.
+ * so the seeder has already produced the 30 rows.
  */
 @QuarkusTest
 class StatusServiceTest {
@@ -35,16 +35,16 @@ class StatusServiceTest {
 
     @Test
     void cachesHoldTheSeededStatusesPerLevel() {
-        assertEquals(2, service.all(StatusLevel.PROJECT).size());
-        assertEquals(4, service.all(StatusLevel.ISSUE).size());
-        assertEquals(4, service.all(StatusLevel.TASKLIST).size());
-        assertEquals(5, service.all(StatusLevel.TASK).size());
+        assertEquals(3, service.all(StatusLevel.PROJECT).size());
+        assertEquals(5, service.all(StatusLevel.ISSUE).size());
+        assertEquals(5, service.all(StatusLevel.TASKLIST).size());
+        assertEquals(6, service.all(StatusLevel.TASK).size());
     }
 
     @Test
     void cachesAreOrderedByPrecedence() {
         List<StatusBase> issues = service.all(StatusLevel.ISSUE);
-        assertEquals(List.of("TODO", "DOING", "DONE", "INACTIVE"),
+        assertEquals(List.of("TODO", "DOING", "DONE", "INACTIVE", "NEEDS_MIGRATION"),
             issues.stream().map(s -> s.code).toList());
     }
 
@@ -53,9 +53,10 @@ class StatusServiceTest {
         assertEquals(6, service.progressLevels().size());
         assertEquals(0, service.progressLevels().get("NASCENT"));
         assertEquals(5, service.progressLevels().get("FINALIZED"));
-        assertEquals(4, service.attitudeTypes().size());
+        assertEquals(5, service.attitudeTypes().size());
         assertEquals(1, service.attitudeTypes().get("EXCLUDED"));
         assertEquals(3, service.attitudeTypes().get("TRASH"));
+        assertEquals(4, service.attitudeTypes().get("MIGRATION"));
     }
 
     @Test

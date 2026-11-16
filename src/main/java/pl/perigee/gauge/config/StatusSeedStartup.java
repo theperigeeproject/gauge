@@ -58,6 +58,17 @@ public class StatusSeedStartup {
     public static final String EXCLUDED = "EXCLUDED";
     public static final String ARCHIVE = "ARCHIVE";
     public static final String TRASH = "TRASH";
+    /**
+     * Rows whose status was never brought over from the legacy code column. Not a hack: the
+     * attitude axis exists precisely to say "treat rows carrying this status differently", and
+     * "this row has not been migrated yet" is exactly such a treatment. It also makes the migration
+     * optional — an upgraded database that is never migrated stays correct and visible, it just
+     * shows {@link #NEEDS_MIGRATION} instead of a real status.
+     */
+    public static final String MIGRATION = "MIGRATION";
+
+    /** The status a null {@code statusId} resolves to, per level. ADR 0020 §5. */
+    public static final String NEEDS_MIGRATION = "NEEDS_MIGRATION";
 
     // Colours mirror the current palette so nothing shifts visually at switchover.
     private static final String C_TODO = "#60a5fa";
@@ -68,6 +79,8 @@ public class StatusSeedStartup {
     private static final String C_FAILED = "#f87171";
     private static final String C_OPENED = "#60a5fa";
     private static final String C_CLOSED = "#94a3b8";
+    /** Orange: distinct from every other seed colour, and reads as "attention", not "error". */
+    private static final String C_NEEDS_MIGRATION = "#fb923c";
 
     @Inject
     ProgressLevelRepository progressLevelRepository;
@@ -131,6 +144,7 @@ public class StatusSeedStartup {
         inserted += seedAttitude(EXCLUDED, 1);
         inserted += seedAttitude(ARCHIVE, 2);
         inserted += seedAttitude(TRASH, 3);
+        inserted += seedAttitude(MIGRATION, 4);
         logTable("attitude_types", inserted, attitudeTypeRepository.count());
     }
 
@@ -150,6 +164,13 @@ public class StatusSeedStartup {
         }
         if (projectStatusRepository.findByCode("CLOSED").isEmpty()) {
             projectStatusRepository.save(new ProjectStatusDef("CLOSED", 1, C_CLOSED, ONGOING, REGULAR));
+            inserted++;
+        }
+        // Last in precedence: an unmigrated row is not a workflow state, so it must not push the
+        // real statuses out of their order.
+        if (projectStatusRepository.findByCode(NEEDS_MIGRATION).isEmpty()) {
+            projectStatusRepository.save(
+                new ProjectStatusDef(NEEDS_MIGRATION, 2, C_NEEDS_MIGRATION, HALTED, MIGRATION));
             inserted++;
         }
         logTable("project_statuses", inserted, projectStatusRepository.count());
@@ -173,6 +194,11 @@ public class StatusSeedStartup {
             issueStatusRepository.save(new IssueStatusDef("INACTIVE", 3, C_INACTIVE, HALTED, EXCLUDED));
             inserted++;
         }
+        if (issueStatusRepository.findByCode(NEEDS_MIGRATION).isEmpty()) {
+            issueStatusRepository.save(
+                new IssueStatusDef(NEEDS_MIGRATION, 4, C_NEEDS_MIGRATION, HALTED, MIGRATION));
+            inserted++;
+        }
         logTable("issue_statuses", inserted, issueStatusRepository.count());
     }
 
@@ -192,6 +218,11 @@ public class StatusSeedStartup {
         }
         if (tasklistStatusRepository.findByCode("CANCELED").isEmpty()) {
             tasklistStatusRepository.save(new TasklistStatusDef("CANCELED", 3, C_CANCELED, FINALIZED, REGULAR));
+            inserted++;
+        }
+        if (tasklistStatusRepository.findByCode(NEEDS_MIGRATION).isEmpty()) {
+            tasklistStatusRepository.save(
+                new TasklistStatusDef(NEEDS_MIGRATION, 4, C_NEEDS_MIGRATION, HALTED, MIGRATION));
             inserted++;
         }
         logTable("tasklist_statuses", inserted, tasklistStatusRepository.count());
@@ -219,6 +250,11 @@ public class StatusSeedStartup {
         }
         if (taskStatusRepository.findByCode("CANCELED").isEmpty()) {
             taskStatusRepository.save(new TaskStatusDef("CANCELED", 4, C_CANCELED, FINALIZED, REGULAR));
+            inserted++;
+        }
+        if (taskStatusRepository.findByCode(NEEDS_MIGRATION).isEmpty()) {
+            taskStatusRepository.save(
+                new TaskStatusDef(NEEDS_MIGRATION, 5, C_NEEDS_MIGRATION, HALTED, MIGRATION));
             inserted++;
         }
         logTable("task_statuses", inserted, taskStatusRepository.count());

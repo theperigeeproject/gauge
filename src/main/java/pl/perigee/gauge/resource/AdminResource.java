@@ -1,6 +1,7 @@
 package pl.perigee.gauge.resource;
 
 import pl.perigee.gauge.service.IdMigrationService;
+import pl.perigee.gauge.service.StatusMigrationService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -18,6 +19,9 @@ public class AdminResource {
 
     @Inject
     IdMigrationService migrationService;
+
+    @Inject
+    StatusMigrationService statusMigrationService;
 
     @Context
     SecurityContext securityContext;
@@ -47,6 +51,47 @@ public class AdminResource {
         } catch (Exception e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity(Map.of("error", "MIGRATION_FAILED", "message", e.getMessage()))
+                .build();
+        }
+    }
+
+    /**
+     * Fills {@code statusId} on every row that predates the reified status model. ADR 0020 §5.
+     *
+     * <p><b>On demand, never at boot.</b> Rows whose status id is null resolve to the
+     * {@code NEEDS_MIGRATION} status through the read path, so an upgraded database is correct and
+     * fully visible <em>without</em> ever calling this — the migration is an optional tidy-up, not a
+     * precondition for the application working.
+     *
+     * <p>Deliberately not {@code /api/admin/statuses/migrate}: {@code /statuses/{level}} is the admin
+     * status surface, and a literal segment that could also parse as a level is a routing trap.
+     */
+    @Operation(
+        operationId = "tracker_migrate_statuses",
+        summary = "Fill statusId on rows that predate reified statuses. Idempotent, safe to repeat. "
+            + "Requires ?confirm=true. Rows with unmatchable legacy codes are reported, not migrated."
+    )
+    @POST
+    @Path("/migrate-statuses")
+    public Response migrateStatuses(@QueryParam("confirm") boolean confirm) {
+        // Admin check FIRST, before the confirm flag (ADR 0019 — the guard fails OPEN, so a
+        // forgotten one is silence rather than an error).
+        if (!isAdmin()) {
+            return forbidden();
+        }
+        if (!confirm) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "CONFIRM_REQUIRED",
+                    "message", "This writes a status id on every unmigrated issue, tasklist and task. "
+                        + "It is idempotent and safe to repeat. Retry with ?confirm=true."))
+                .build();
+        }
+        try {
+            return Response.ok(statusMigrationService.migrate()).build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(Map.of("error", "STATUS_MIGRATION_FAILED",
+                    "message", String.valueOf(e.getMessage())))
                 .build();
         }
     }
