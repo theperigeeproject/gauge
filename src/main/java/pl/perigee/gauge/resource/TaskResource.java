@@ -3,6 +3,7 @@ package pl.perigee.gauge.resource;
 import pl.perigee.gauge.domain.PatchTaskRequest;
 import pl.perigee.gauge.domain.Task;
 import pl.perigee.gauge.domain.UpdateTaskStatusRequest;
+import pl.perigee.gauge.resource.dto.ViewMapper;
 import pl.perigee.gauge.security.ProjectAccessGuard;
 import pl.perigee.gauge.service.TaskService;
 import jakarta.inject.Inject;
@@ -24,6 +25,9 @@ public class TaskResource {
     @Inject
     ProjectAccessGuard accessGuard;
 
+    @Inject
+    ViewMapper viewMapper;
+
     @Operation(
         operationId = "tracker_list_tasks",
         summary = "List all tasks, optionally filtered by ?q=searchPhrase (case-insensitive match on title/description)"
@@ -39,7 +43,7 @@ public class TaskResource {
         tasks = tasks.stream()
             .filter(t -> accessGuard.canAccessTask(t.id()))
             .toList();
-        return Response.ok(tasks).build();
+        return Response.ok(viewMapper.tasks(tasks)).build();
     }
 
     @Operation(
@@ -53,7 +57,7 @@ public class TaskResource {
             return forbidden();
         }
         return service.findById(taskId)
-            .map(task -> Response.ok(task).build())
+            .map(task -> Response.ok(viewMapper.task(task)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -68,7 +72,7 @@ public class TaskResource {
             return forbidden();
         }
         return service.patch(taskId, body.title(), body.description())
-            .map(task -> Response.ok(task).build())
+            .map(task -> Response.ok(viewMapper.task(task)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -83,7 +87,7 @@ public class TaskResource {
             return forbidden();
         }
         return service.updateStatus(taskId, body.status())
-            .map(task -> Response.ok(task).build())
+            .map(task -> Response.ok(viewMapper.task(task)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 

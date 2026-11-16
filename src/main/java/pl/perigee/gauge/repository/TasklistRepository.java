@@ -16,7 +16,7 @@ public class TasklistRepository {
             Tasklist managed = existing.get();
             managed.issueId = tasklist.issueId;
             managed.title = tasklist.title;
-            managed.status = tasklist.status;
+            managed.statusId = tasklist.statusId;
             managed.decomposesTaskId = tasklist.decomposesTaskId;
             managed.persist();
             return managed;

@@ -1,16 +1,24 @@
 package pl.perigee.gauge.domain;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * A project. Carries a status <b>id</b> — lifecycle, set deliberately, never derived and never
+ * bubbled (ADR 0020: a child's status does not change its parent's).
+ *
+ * <p>Implements {@link StatusBearing} so that the view mapper, the helpers on {@code StatusService}
+ * and any future exclusion predicate can treat all four levels uniformly.
+ * {@link #legacyStatusCode()} always returns null: projects gained a status in increment 3 and
+ * <b>never had</b> a legacy code column, so there is nothing to migrate them from — every existing
+ * row was given {@code OPENED} by the migration.
+ */
 @Entity
 @Table(name = "projects")
-public class Project extends PanacheEntityBase {
+public class Project extends PanacheEntityBase implements StatusBearing {
 
     @Id
     @Column(name = "id", length = 36)
@@ -31,12 +39,8 @@ public class Project extends PanacheEntityBase {
     /**
      * The project's lifecycle status — an internal {@code ProjectStatusDef} id (ADR 0020 §5).
      *
-     * <p>Projects had no status before this, so there is no legacy code column to migrate from:
-     * existing rows simply get the seeded {@code OPENED} status. Nullable in the schema because an
-     * upgraded database starts empty here; the API never accepts null.
-     *
-     * <p><b>This does not bubble.</b> A child's status never changes its parent's — lifecycle is
-     * per-node and set deliberately. See {@code ProjectStatusDef}.
+     * <p>Nullable in the schema because an upgraded database starts empty here; the API never
+     * accepts null.
      */
     @Column(name = "statusId")
     public Integer statusId;
@@ -44,19 +48,14 @@ public class Project extends PanacheEntityBase {
     public Project() {
     }
 
-    @JsonCreator
-    public Project(
-        @JsonProperty("id") String id,
-        @JsonProperty("name") String name,
-        @JsonProperty("description") String description,
-        @JsonProperty("parentId") String parentId,
-        @JsonProperty("removalLock") String removalLock
-    ) {
+    public Project(String id, String name, String description, String parentId,
+                   String removalLock, Integer statusId) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.parentId = parentId;
         this.removalLock = removalLock != null ? removalLock : "";
+        this.statusId = statusId;
     }
 
     public String id() { return id; }
@@ -64,15 +63,26 @@ public class Project extends PanacheEntityBase {
     public String description() { return description; }
     public String parentId() { return parentId; }
     public String removalLock() { return removalLock != null ? removalLock : ""; }
+
+    @Override
     public Integer statusId() { return statusId; }
 
-    public static Project create(String name, String description, String parentId) {
+    @Override
+    public void setStatusId(Integer statusId) { this.statusId = statusId; }
+
+    /** Projects never had a legacy status column — see the class javadoc. */
+    @Override
+    public String legacyStatusCode() { return null; }
+
+    public static Project create(String name, String description, String parentId,
+                                 Integer statusId) {
         return new Project(
             IdProviderHolder.provider().nextId(),
             name,
             description,
             parentId,
-            ""
+            "",
+            statusId
         );
     }
 }

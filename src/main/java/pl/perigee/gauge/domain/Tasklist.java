@@ -1,13 +1,15 @@
 package pl.perigee.gauge.domain;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * A tasklist. Carries a status <b>id</b>; the wire code is resolved by
+ * {@code resource/dto/TasklistView} through {@code StatusService}.
+ */
 @Entity
 @Table(name = "tasklists")
 public class Tasklist extends PanacheEntityBase implements StatusBearing {
@@ -22,7 +24,7 @@ public class Tasklist extends PanacheEntityBase implements StatusBearing {
     @Column(name = "title", nullable = false)
     public String title;
 
-    /** LEGACY, pre-migration status code. Read only by the migration (ADR 0020 §5). */
+    /** LEGACY, pre-migration status code. Never written again after increment 4 (ADR 0020 §5). */
     @Column(name = "status", length = 20)
     public String status;
 
@@ -36,25 +38,18 @@ public class Tasklist extends PanacheEntityBase implements StatusBearing {
     public Tasklist() {
     }
 
-    @JsonCreator
-    public Tasklist(
-        @JsonProperty("id") String id,
-        @JsonProperty("issueId") String issueId,
-        @JsonProperty("title") String title,
-        @JsonProperty("status") TasklistStatus status,
-        @JsonProperty("decomposesTaskId") String decomposesTaskId
-    ) {
+    public Tasklist(String id, String issueId, String title, Integer statusId,
+                    String decomposesTaskId) {
         this.id = id;
         this.issueId = issueId;
         this.title = title;
-        this.status = status.name();
+        this.statusId = statusId;
         this.decomposesTaskId = decomposesTaskId;
     }
 
     public String id() { return id; }
     public String issueId() { return issueId; }
     public String title() { return title; }
-    public TasklistStatus status() { return TasklistStatus.valueOf(status); }
     public String decomposesTaskId() { return decomposesTaskId; }
 
     @Override
@@ -66,12 +61,13 @@ public class Tasklist extends PanacheEntityBase implements StatusBearing {
     @Override
     public String legacyStatusCode() { return status; }
 
-    public static Tasklist create(String issueId, String title, String decomposesTaskId) {
+    public static Tasklist create(String issueId, String title, String decomposesTaskId,
+                                  Integer statusId) {
         return new Tasklist(
             IdProviderHolder.provider().nextId(),
             issueId,
             title,
-            TasklistStatus.TODO,
+            statusId,
             decomposesTaskId
         );
     }

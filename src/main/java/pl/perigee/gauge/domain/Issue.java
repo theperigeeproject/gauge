@@ -1,13 +1,18 @@
 package pl.perigee.gauge.domain;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * An issue. Carries a status <b>id</b>, never a status code (ADR 0020 §2/§5).
+ *
+ * <p>The wire shape is not this class: {@code resource/dto/IssueView} resolves the code through
+ * {@code StatusService}. Keeping the entity free of that translation is what stops a mapper from
+ * quietly bypassing the {@code NEEDS_MIGRATION} fallback.
+ */
 @Entity
 @Table(name = "issues")
 public class Issue extends PanacheEntityBase implements StatusBearing {
@@ -29,9 +34,11 @@ public class Issue extends PanacheEntityBase implements StatusBearing {
     public String description;
 
     /**
-     * LEGACY, pre-migration status code. Untouched by the new model and never written again.
-     * Kept because renaming a column is something Hibernate's {@code update} cannot do (ADR 0020 §5).
-     * Read only by {@code StatusDataMigrationStartup}.
+     * LEGACY, pre-migration status code. Untouched by the new model and <b>never written again</b>
+     * after increment 4 of 0000186F: creating an issue leaves it null and writes {@link #statusId}
+     * instead. Kept because renaming a column is something Hibernate's {@code update} cannot do
+     * (ADR 0020 §5), and because {@code StatusMigrationService} still reads it for rows that
+     * predate the switchover.
      */
     @Column(name = "status", length = 20)
     public String status;
@@ -49,20 +56,13 @@ public class Issue extends PanacheEntityBase implements StatusBearing {
     public Issue() {
     }
 
-    @JsonCreator
-    public Issue(
-        @JsonProperty("id") String id,
-        @JsonProperty("projectId") String projectId,
-        @JsonProperty("title") String title,
-        @JsonProperty("description") String description,
-        @JsonProperty("status") IssueStatus status,
-        @JsonProperty("priority") Priority priority
-    ) {
+    public Issue(String id, String projectId, String title, String description,
+                 Integer statusId, Priority priority) {
         this.id = id;
         this.projectId = projectId;
         this.title = title;
         this.description = description;
-        this.status = status.name();
+        this.statusId = statusId;
         this.priority = priority.name();
     }
 
@@ -70,7 +70,6 @@ public class Issue extends PanacheEntityBase implements StatusBearing {
     public String projectId() { return projectId; }
     public String title() { return title; }
     public String description() { return description; }
-    public IssueStatus status() { return IssueStatus.valueOf(status); }
     public Priority priority() { return Priority.valueOf(priority); }
 
     @Override
@@ -82,13 +81,18 @@ public class Issue extends PanacheEntityBase implements StatusBearing {
     @Override
     public String legacyStatusCode() { return status; }
 
-    public static Issue create(String projectId, String title, String description, Priority priority) {
+    /**
+     * @param statusId the internal status id — callers resolve a code through
+     *                 {@code StatusService.resolveForWrite}, never by naming an enum
+     */
+    public static Issue create(String projectId, String title, String description,
+                               Priority priority, Integer statusId) {
         return new Issue(
             IdProviderHolder.provider().nextId(),
             projectId,
             title,
             description,
-            IssueStatus.TODO,
+            statusId,
             priority
         );
     }

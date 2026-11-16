@@ -3,6 +3,7 @@ package pl.perigee.gauge.service;
 import pl.perigee.gauge.domain.*;
 import pl.perigee.gauge.repository.TaskRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -30,6 +31,16 @@ class TasklistServiceTest {
     @Inject
     EntityManager em;
 
+    @Inject
+    StatusIds statusIds;
+
+    @Inject
+    StatusService statusService;
+
+    private String statusCode(Tasklist tasklist) {
+        return statusService.codeFor(StatusLevel.TASKLIST, tasklist.statusId());
+    }
+
     @BeforeEach
     @Transactional
     void cleanUp() {
@@ -44,7 +55,7 @@ class TasklistServiceTest {
     }
 
     private Task createTask(String id, String tasklistId) {
-        Task t = new Task(id, tasklistId, 0, "Task", "desc", TaskStatus.TODO);
+        Task t = new Task(id, tasklistId, 0, "Task", "desc", statusIds.task("TODO"));
         taskRepository.save(t);
         return t;
     }
@@ -72,7 +83,7 @@ class TasklistServiceTest {
         assertNotNull(tl.id());
         assertEquals("I0000001", tl.issueId());
         assertEquals("Test Tasklist", tl.title());
-        assertEquals(TasklistStatus.TODO, tl.status());
+        assertEquals("TODO", statusCode(tl), "a fresh tasklist gets the level's default status");
         assertNull(tl.decomposesTaskId());
     }
 
@@ -228,33 +239,39 @@ class TasklistServiceTest {
     @Transactional
     void testUpdateStatusToDoing() {
         Tasklist created = createTasklist("I0000001", "Test");
-        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), TasklistStatus.DOING);
+        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), "DOING");
         assertTrue(updated.isPresent());
-        assertEquals(TasklistStatus.DOING, updated.get().status());
+        assertEquals("DOING", statusCode(updated.get()));
     }
 
     @Test
     @Transactional
     void testUpdateStatusToDone() {
         Tasklist created = createTasklist("I0000001", "Test");
-        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), TasklistStatus.DONE);
+        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), "DONE");
         assertTrue(updated.isPresent());
-        assertEquals(TasklistStatus.DONE, updated.get().status());
+        assertEquals("DONE", statusCode(updated.get()));
     }
 
     @Test
     @Transactional
-    void testUpdateStatusToCanceled() {
+    void testUpdateStatusToCanceledIsFlagGated() {
         Tasklist created = createTasklist("I0000001", "Test");
-        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), TasklistStatus.CANCELED);
-        assertTrue(updated.isPresent());
-        assertEquals(TasklistStatus.CANCELED, updated.get().status());
+
+        // CANCELED is FINALIZED, and FINALIZED is an EXTENDED progress level: authoring requires
+        // gauge.status.extended-progress-levels=true (ADR 0020 §7). See issue 00001A9E.
+        ValidationException e = assertThrows(ValidationException.class,
+            () -> tasklistService.updateStatus(created.id(), "CANCELED"));
+        assertEquals("STATUS_NOT_AVAILABLE", e.error());
+        assertTrue(e.getMessage().contains("gauge.status.extended-progress-levels"),
+            "the refusal must name the switch: " + e.getMessage());
+        assertEquals("TODO", statusCode(tasklistService.findById(created.id()).orElseThrow()));
     }
 
     @Test
     @Transactional
     void testUpdateStatusNotFound() {
-        Optional<Tasklist> updated = tasklistService.updateStatus("NONEXISTENT", TasklistStatus.DOING);
+        Optional<Tasklist> updated = tasklistService.updateStatus("NONEXISTENT", "DOING");
         assertFalse(updated.isPresent());
     }
 
@@ -369,7 +386,7 @@ class TasklistServiceTest {
     @Transactional
     void testUpdateDecomposesTaskOrphanedTask() {
         // Create a task whose tasklistId points to a non-existent tasklist
-        Task orphan = new Task("T0000001", "NONEXISTENT_TL", 0, "Orphan", "desc", TaskStatus.TODO);
+        Task orphan = new Task("T0000001", "NONEXISTENT_TL", 0, "Orphan", "desc", statusIds.task("TODO"));
         taskRepository.save(orphan);
         Tasklist tl = createTasklist("I0000001", "Target");
 
@@ -472,7 +489,7 @@ class TasklistServiceTest {
         Tasklist tl = tasklistService.create("I0000001", "Target", "T0000001");
 
         // Update status — decomposesTaskId should be preserved
-        Optional<Tasklist> updated = tasklistService.updateStatus(tl.id(), TasklistStatus.DOING);
+        Optional<Tasklist> updated = tasklistService.updateStatus(tl.id(), "DOING");
         assertTrue(updated.isPresent());
         assertEquals("T0000001", updated.get().decomposesTaskId());
     }
@@ -485,7 +502,7 @@ class TasklistServiceTest {
     @Transactional
     void testCreateWithDecomposesTaskIdOrphanedTask() {
         // Create a task whose tasklistId points nowhere
-        Task orphan = new Task("T0000001", "NONEXISTENT_TL", 0, "Orphan", "desc", TaskStatus.TODO);
+        Task orphan = new Task("T0000001", "NONEXISTENT_TL", 0, "Orphan", "desc", statusIds.task("TODO"));
         taskRepository.save(orphan);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->

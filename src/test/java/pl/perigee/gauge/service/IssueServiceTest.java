@@ -4,6 +4,7 @@ import pl.perigee.gauge.domain.*;
 import pl.perigee.gauge.repository.IssueRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
 import pl.perigee.gauge.repository.TaskRepository;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -35,6 +36,21 @@ class IssueServiceTest {
     @Inject
     EntityManager em;
 
+    @Inject
+    StatusIds statusIds;
+
+    @Inject
+    StatusService statusService;
+
+    /** Statuses are data now; the valid set is per level and asked from the service (ADR 0020). */
+    private StatusBase issueStatus(String code) {
+        return statusService.require(StatusLevel.ISSUE, code);
+    }
+
+    private String statusCode(Issue issue) {
+        return statusService.codeFor(StatusLevel.ISSUE, issue.statusId());
+    }
+
     @BeforeEach
     @Transactional
     void cleanUp() {
@@ -50,13 +66,13 @@ class IssueServiceTest {
     }
 
     private Tasklist createTasklist(String id, String issueId) {
-        Tasklist tl = new Tasklist(id, issueId, "TL", TasklistStatus.TODO, null);
+        Tasklist tl = new Tasklist(id, issueId, "TL", statusIds.tasklist("TODO"), null);
         tasklistRepository.save(tl);
         return tl;
     }
 
     private Task createTask(String id, String tasklistId) {
-        Task t = new Task(id, tasklistId, 0, "Task", "desc", TaskStatus.TODO);
+        Task t = new Task(id, tasklistId, 0, "Task", "desc", statusIds.task("TODO"));
         taskRepository.save(t);
         return t;
     }
@@ -73,7 +89,7 @@ class IssueServiceTest {
         assertEquals("Test Issue", issue.title());
         assertEquals("Description", issue.description());
         assertEquals(Priority.HIGH, issue.priority());
-        assertEquals(IssueStatus.TODO, issue.status());
+        assertEquals("TODO", statusCode(issue), "a fresh issue gets the level's default status");
     }
 
     // ---- 1: findById — exists / empty ----
@@ -162,13 +178,13 @@ class IssueServiceTest {
     @Transactional
     void testUpdateStatus() {
         Issue created = createIssue("P0000001", "Test", Priority.NORMAL);
-        Optional<Issue> updated = issueService.updateStatus(created.id(), IssueStatus.DOING);
+        Optional<Issue> updated = issueService.updateStatus(created.id(), "DOING");
         assertTrue(updated.isPresent());
-        assertEquals(IssueStatus.DOING, updated.get().status());
+        assertEquals("DOING", statusCode(updated.get()));
 
-        updated = issueService.updateStatus(created.id(), IssueStatus.DONE);
+        updated = issueService.updateStatus(created.id(), "DONE");
         assertTrue(updated.isPresent());
-        assertEquals(IssueStatus.DONE, updated.get().status());
+        assertEquals("DONE", statusCode(updated.get()));
     }
 
     // ---- 6: updatePriority — HIGH→NORMAL→LOW transitions ----
@@ -254,15 +270,15 @@ class IssueServiceTest {
     @Transactional
     void testSortingByStatusPriorityName() {
         Issue i1 = createIssue("P0000001", "Z", Priority.HIGH);
-        issueService.updateStatus(i1.id(), IssueStatus.DONE);
+        issueService.updateStatus(i1.id(), "DONE");
         createIssue("P0000001", "A", Priority.LOW);
         createIssue("P0000001", "B", Priority.HIGH);
 
         List<Issue> sorted = issueService.findByProjectIdSortedAndFiltered(
             "P0000001", SortOption.STATUS_PRIORITY_NAME, null, null);
-        assertEquals(IssueStatus.TODO, sorted.get(0).status());
-        assertEquals(IssueStatus.TODO, sorted.get(1).status());
-        assertEquals(IssueStatus.DONE, sorted.get(2).status());
+        assertEquals("TODO", statusCode(sorted.get(0)));
+        assertEquals("TODO", statusCode(sorted.get(1)));
+        assertEquals("DONE", statusCode(sorted.get(2)));
         assertEquals(Priority.HIGH, sorted.get(0).priority());
     }
 
@@ -322,12 +338,12 @@ class IssueServiceTest {
     @Transactional
     void testFilterByStatus() {
         Issue i = createIssue("P0000001", "Gamma", Priority.NORMAL);
-        issueService.updateStatus(i.id(), IssueStatus.DOING);
+        issueService.updateStatus(i.id(), "DOING");
         createIssue("P0000001", "Delta", Priority.NORMAL);
 
         List<Issue> doingOnly = issueService.findByProjectIdSortedAndFiltered(
             "P0000001", SortOption.PRIORITY_STATUS_NAME,
-            null, Set.of(IssueStatus.DOING));
+            null, Set.of(issueStatus("DOING")));
         assertEquals(1, doingOnly.size());
         assertEquals("Gamma", doingOnly.get(0).title());
     }
@@ -337,12 +353,12 @@ class IssueServiceTest {
     void testFilterCombined() {
         createIssue("P0000001", "HighTodo", Priority.HIGH);
         Issue i = createIssue("P0000001", "HighDoing", Priority.HIGH);
-        issueService.updateStatus(i.id(), IssueStatus.DOING);
+        issueService.updateStatus(i.id(), "DOING");
         createIssue("P0000001", "LowTodo", Priority.LOW);
 
         List<Issue> filtered = issueService.findByProjectIdSortedAndFiltered(
             "P0000001", SortOption.PRIORITY_STATUS_NAME,
-            Set.of(Priority.HIGH), Set.of(IssueStatus.DOING));
+            Set.of(Priority.HIGH), Set.of(issueStatus("DOING")));
         assertEquals(1, filtered.size());
         assertEquals("HighDoing", filtered.get(0).title());
     }
@@ -378,7 +394,7 @@ class IssueServiceTest {
     @Test
     @Transactional
     void testUpdateStatusNotFound() {
-        Optional<Issue> updated = issueService.updateStatus("NONEXISTENT", IssueStatus.DOING);
+        Optional<Issue> updated = issueService.updateStatus("NONEXISTENT", "DOING");
         assertFalse(updated.isPresent());
     }
 
@@ -495,20 +511,20 @@ class IssueServiceTest {
     @Transactional
     void testStatusOrderingIncludesInactive() {
         Issue done = createIssue("P0000001", "Done", Priority.NORMAL);
-        issueService.updateStatus(done.id(), IssueStatus.DONE);
+        issueService.updateStatus(done.id(), "DONE");
         Issue parked = createIssue("P0000001", "Parked", Priority.NORMAL);
-        issueService.updateStatus(parked.id(), IssueStatus.INACTIVE);
+        issueService.updateStatus(parked.id(), "INACTIVE");
         Issue doing = createIssue("P0000001", "Doing", Priority.NORMAL);
-        issueService.updateStatus(doing.id(), IssueStatus.DOING);
+        issueService.updateStatus(doing.id(), "DOING");
         createIssue("P0000001", "Todo", Priority.NORMAL);
 
         List<Issue> sorted = issueService.findByProjectIdSortedAndFiltered(
             "P0000001", SortOption.STATUS_PRIORITY_NAME, null, null);
         assertEquals(4, sorted.size());
-        assertEquals(IssueStatus.TODO, sorted.get(0).status());
-        assertEquals(IssueStatus.DOING, sorted.get(1).status());
-        assertEquals(IssueStatus.DONE, sorted.get(2).status());
-        assertEquals(IssueStatus.INACTIVE, sorted.get(3).status());
+        assertEquals("TODO", statusCode(sorted.get(0)));
+        assertEquals("DOING", statusCode(sorted.get(1)));
+        assertEquals("DONE", statusCode(sorted.get(2)));
+        assertEquals("INACTIVE", statusCode(sorted.get(3)));
     }
 
     // ---- 28: filter by INACTIVE status ----
@@ -517,14 +533,14 @@ class IssueServiceTest {
     @Transactional
     void testFilterByInactiveStatus() {
         Issue parked = createIssue("P0000001", "Parked", Priority.HIGH);
-        issueService.updateStatus(parked.id(), IssueStatus.INACTIVE);
+        issueService.updateStatus(parked.id(), "INACTIVE");
         createIssue("P0000001", "Todo", Priority.HIGH);
 
         List<Issue> inactiveOnly = issueService.findByProjectIdSortedAndFiltered(
-            "P0000001", SortOption.PRIORITY_STATUS_NAME, null, Set.of(IssueStatus.INACTIVE));
+            "P0000001", SortOption.PRIORITY_STATUS_NAME, null, Set.of(issueStatus("INACTIVE")));
         assertEquals(1, inactiveOnly.size());
         assertEquals("Parked", inactiveOnly.get(0).title());
-        assertEquals(IssueStatus.INACTIVE, inactiveOnly.get(0).status());
+        assertEquals("INACTIVE", statusCode(inactiveOnly.get(0)));
     }
 
     // ---- 29: updateStatus → INACTIVE round-trip ----
@@ -533,8 +549,8 @@ class IssueServiceTest {
     @Transactional
     void testUpdateStatusToInactive() {
         Issue created = createIssue("P0000001", "Test", Priority.NORMAL);
-        Optional<Issue> updated = issueService.updateStatus(created.id(), IssueStatus.INACTIVE);
+        Optional<Issue> updated = issueService.updateStatus(created.id(), "INACTIVE");
         assertTrue(updated.isPresent());
-        assertEquals(IssueStatus.INACTIVE, updated.get().status());
+        assertEquals("INACTIVE", statusCode(updated.get()));
     }
 }

@@ -18,6 +18,7 @@ public class ProjectRepository {
             managed.description = project.description;
             managed.parentId = project.parentId;
             managed.removalLock = project.removalLock;
+            managed.statusId = project.statusId;
             managed.persist();
             return managed;
         }

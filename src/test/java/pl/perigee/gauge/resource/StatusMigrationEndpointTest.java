@@ -1,7 +1,6 @@
 package pl.perigee.gauge.resource;
 
 import pl.perigee.gauge.domain.Issue;
-import pl.perigee.gauge.domain.IssueStatus;
 import pl.perigee.gauge.domain.Priority;
 import pl.perigee.gauge.domain.User;
 import pl.perigee.gauge.service.ApiKeyService;
@@ -151,9 +150,9 @@ class StatusMigrationEndpointTest {
     }
 
     private static Issue legacyIssue(String id, String legacyCode) {
-        Issue issue = new Issue(id, "PROJ0001", "t", "d", IssueStatus.TODO, Priority.NORMAL);
+        // A pre-increment-4 row on purpose: legacy code set, status id null.
+        Issue issue = new Issue(id, "PROJ0001", "t", "d", null, Priority.NORMAL);
         issue.status = legacyCode;
-        issue.statusId = null;
         return issue;
     }
 }

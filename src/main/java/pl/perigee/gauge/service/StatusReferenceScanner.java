@@ -2,8 +2,8 @@ package pl.perigee.gauge.service;
 
 import pl.perigee.gauge.domain.Issue;
 import pl.perigee.gauge.domain.Project;
-import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.StatusBase;
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.ValidationException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
@@ -12,31 +12,32 @@ import jakarta.transaction.Transactional;
  * Answers "how many rows point at this status?" — the full scan that every status removal must do
  * before it decides anything (ADR 0020 §10).
  *
- * <p><b>This is the one place that knows how entities reference a status, and it is temporary.</b>
- * Issues, tasklists and tasks still carry the legacy status <em>code</em> in a varchar, so counting
- * and rewriting for those three go through the code. Projects are the exception and always were:
- * they have <b>no</b> legacy column at all, only {@code statusId}, so they are counted by id.
+ * <p><b>All four levels are counted by {@code statusId} now.</b> Increment 4 of 0000186F completed
+ * the switchover: entities carry no status code any more, so a removal policy that still matched on
+ * the legacy varchar would see zero references for every row created since — silent data loss under
+ * {@code remove}, a silent no-op under {@code prevent}.
  *
- * <p>Once the wire switchover lands the other three flip to ids as well and this class's signature
- * does not change. Keeping the seam here means that flip touches one class instead of every removal
- * path.
+ * <p><b>A row with a null {@code statusId} references no status.</b> It is "not migrated yet", and
+ * it is deliberately invisible to every policy here: reassigning it would invent a status nobody
+ * chose, and deleting it because some <em>other</em> status was removed would be vandalism. Such
+ * rows are found and fixed by {@code StatusMigrationService}, not by this class.
  *
- * <p><b>Projects must be counted by id or deletion corrupts them.</b> Returning zero for
- * {@link StatusLevel#PROJECT} was correct when projects had no status column; it stopped being
- * correct the moment they gained one, because a project status would then always look unused,
- * deletion would proceed, and every project pointing at it would resolve to a dangling id — which
- * {@code StatusService.byId} correctly reports as corruption, far from the edit that caused it.
+ * <p>This is the one place that knows how entities reference a status, so a future change of the
+ * reference (an FK, a join table) touches one class instead of every removal path.
  */
 @ApplicationScoped
 public class StatusReferenceScanner {
 
     /** How many rows of this level currently carry this status. */
     public long count(StatusLevel level, StatusBase status) {
+        if (status.id == null) {
+            return 0L;
+        }
         return switch (level) {
-            case PROJECT -> status.id == null ? 0L : Project.count("statusId", status.id);
-            case ISSUE -> Issue.find("status", status.code).count();
-            case TASKLIST -> pl.perigee.gauge.domain.Tasklist.find("status", status.code).count();
-            case TASK -> pl.perigee.gauge.domain.Task.find("status", status.code).count();
+            case PROJECT -> Project.count("statusId", status.id);
+            case ISSUE -> Issue.count("statusId", status.id);
+            case TASKLIST -> pl.perigee.gauge.domain.Tasklist.count("statusId", status.id);
+            case TASK -> pl.perigee.gauge.domain.Task.count("statusId", status.id);
         };
     }
 
@@ -64,11 +65,14 @@ public class StatusReferenceScanner {
                     + "another status, or delete the projects explicitly first."
             );
         }
+        if (status.id == null) {
+            return 0L;
+        }
         long affected = switch (level) {
             case PROJECT -> 0L;
-            case ISSUE -> Issue.delete("status", status.code);
-            case TASKLIST -> pl.perigee.gauge.domain.Tasklist.delete("status", status.code);
-            case TASK -> pl.perigee.gauge.domain.Task.delete("status", status.code);
+            case ISSUE -> Issue.delete("statusId", status.id);
+            case TASKLIST -> pl.perigee.gauge.domain.Tasklist.delete("statusId", status.id);
+            case TASK -> pl.perigee.gauge.domain.Task.delete("statusId", status.id);
         };
         detachStale(level);
         return affected;
@@ -78,17 +82,23 @@ public class StatusReferenceScanner {
      * Rewrites every row carrying {@code from} to {@code to}. Used by the {@code migrate} policy.
      *
      * <p>Targets are named by status object, never by id at the API boundary — ids are internal
-     * (ADR 0020 §2). Projects are rewritten by id, because that is the only thing they carry.
+     * (ADR 0020 §2).
      */
     @Transactional
     public long reassign(StatusLevel level, StatusBase from, StatusBase to) {
+        if (to.id == null) {
+            throw new ValidationException(
+                "MIGRATE_TARGET_REQUIRED",
+                "The migration target has no status id; it cannot be stored on a row."
+            );
+        }
         long affected = switch (level) {
             case PROJECT -> Project.update("statusId = ?1 WHERE statusId = ?2", to.id, from.id);
-            case ISSUE -> Issue.update("status = ?1 WHERE status = ?2", to.code, from.code);
+            case ISSUE -> Issue.update("statusId = ?1 WHERE statusId = ?2", to.id, from.id);
             case TASKLIST -> pl.perigee.gauge.domain.Tasklist.update(
-                "status = ?1 WHERE status = ?2", to.code, from.code);
+                "statusId = ?1 WHERE statusId = ?2", to.id, from.id);
             case TASK -> pl.perigee.gauge.domain.Task.update(
-                "status = ?1 WHERE status = ?2", to.code, from.code);
+                "statusId = ?1 WHERE statusId = ?2", to.id, from.id);
         };
         detachStale(level);
         return affected;

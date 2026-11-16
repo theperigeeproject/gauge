@@ -8,6 +8,7 @@ import pl.perigee.gauge.domain.PatchIssueRequest;
 import pl.perigee.gauge.domain.Tasklist;
 import pl.perigee.gauge.domain.UpdateIssuePriorityRequest;
 import pl.perigee.gauge.domain.UpdateIssueStatusRequest;
+import pl.perigee.gauge.resource.dto.ViewMapper;
 import pl.perigee.gauge.security.ProjectAccessGuard;
 import pl.perigee.gauge.service.IssueService;
 import pl.perigee.gauge.service.TasklistService;
@@ -33,6 +34,9 @@ public class IssueResource {
     @Inject
     ProjectAccessGuard accessGuard;
 
+    @Inject
+    ViewMapper viewMapper;
+
     @Operation(
         operationId = "tracker_list_issues",
         summary = "List all issues, optionally filtered by ?q=searchPhrase (case-insensitive match on title/description)"
@@ -49,7 +53,7 @@ public class IssueResource {
         issues = issues.stream()
             .filter(i -> accessGuard.canAccessIssue(i.id()))
             .toList();
-        return Response.ok(issues).build();
+        return Response.ok(viewMapper.issues(issues)).build();
     }
 
     @Operation(
@@ -63,7 +67,7 @@ public class IssueResource {
             return forbidden();
         }
         Tasklist tasklist = tasklistService.create(issueId, body.title(), body.decomposesTaskId());
-        return Response.status(Response.Status.CREATED).entity(tasklist).build();
+        return Response.status(Response.Status.CREATED).entity(viewMapper.tasklist(tasklist)).build();
     }
 
     @Operation(
@@ -76,7 +80,7 @@ public class IssueResource {
         if (!accessGuard.canAccessIssue(issueId)) {
             return forbidden();
         }
-        return Response.ok(tasklistService.findByIssueId(issueId)).build();
+        return Response.ok(viewMapper.tasklists(tasklistService.findByIssueId(issueId))).build();
     }
 
     @Operation(
@@ -90,7 +94,7 @@ public class IssueResource {
             return forbidden();
         }
         return service.findById(issueId)
-            .map(issue -> Response.ok(issue).build())
+            .map(issue -> Response.ok(viewMapper.issue(issue)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -105,7 +109,7 @@ public class IssueResource {
             return forbidden();
         }
         return service.patch(issueId, body.title(), body.description())
-            .map(issue -> Response.ok(issue).build())
+            .map(issue -> Response.ok(viewMapper.issue(issue)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -120,7 +124,7 @@ public class IssueResource {
             return forbidden();
         }
         return service.updateStatus(issueId, body.status())
-            .map(issue -> Response.ok(issue).build())
+            .map(issue -> Response.ok(viewMapper.issue(issue)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -135,7 +139,7 @@ public class IssueResource {
             return forbidden();
         }
         return service.updatePriority(issueId, body.priority())
-            .map(issue -> Response.ok(issue).build())
+            .map(issue -> Response.ok(viewMapper.issue(issue)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -153,7 +157,7 @@ public class IssueResource {
             return forbidden();
         }
         return service.moveToProject(issueId, body.projectId())
-            .map(issue -> Response.ok(issue).build())
+            .map(issue -> Response.ok(viewMapper.issue(issue)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 

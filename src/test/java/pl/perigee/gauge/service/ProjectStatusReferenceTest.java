@@ -39,14 +39,17 @@ class ProjectStatusReferenceTest {
     @Test
     @TestTransaction
     void projectsAreCountedByStatusId() {
-        assertEquals(0, scanner.count(StatusLevel.PROJECT, opened()),
-            "a fresh database has no projects, so nothing references OPENED");
+        // Counted as a delta, not as an absolute: @Transactional test methods COMMIT, so projects
+        // created by earlier tests are still in the database (handoff §7).
+        long beforeOpened = scanner.count(StatusLevel.PROJECT, opened());
+        long beforeClosed = scanner.count(StatusLevel.PROJECT, closed());
 
         persistProject("PROJREF1", opened().id);
         em.flush();
 
-        assertEquals(1, scanner.count(StatusLevel.PROJECT, opened()));
-        assertEquals(0, scanner.count(StatusLevel.PROJECT, closed()));
+        assertEquals(beforeOpened + 1, scanner.count(StatusLevel.PROJECT, opened()),
+            "the new project must be counted as a reference to OPENED");
+        assertEquals(beforeClosed, scanner.count(StatusLevel.PROJECT, closed()));
     }
 
     // ── Consequence 1: an in-use project status is a 409, not a silent delete ──
@@ -127,8 +130,7 @@ class ProjectStatusReferenceTest {
     // ── Helpers ─────────────────────────────────────────────────────
 
     private void persistProject(String id, Integer statusId) {
-        Project project = new Project(id, "ref test", "d", null, "");
-        project.statusId = statusId;
+        Project project = new Project(id, "ref test", "d", null, "", statusId);
         em.persist(project);
     }
 }

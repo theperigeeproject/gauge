@@ -1,13 +1,15 @@
 package pl.perigee.gauge.domain;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * A task. Carries a status <b>id</b>; the wire code is resolved by
+ * {@code resource/dto/TaskView} through {@code StatusService}.
+ */
 @Entity
 @Table(name = "tasks")
 public class Task extends PanacheEntityBase implements StatusBearing {
@@ -28,7 +30,7 @@ public class Task extends PanacheEntityBase implements StatusBearing {
     @Column(name = "description", length = 4000)
     public String description;
 
-    /** LEGACY, pre-migration status code. Read only by the migration (ADR 0020 §5). */
+    /** LEGACY, pre-migration status code. Never written again after increment 4 (ADR 0020 §5). */
     @Column(name = "status", length = 20)
     public String status;
 
@@ -39,21 +41,14 @@ public class Task extends PanacheEntityBase implements StatusBearing {
     public Task() {
     }
 
-    @JsonCreator
-    public Task(
-        @JsonProperty("id") String id,
-        @JsonProperty("tasklistId") String tasklistId,
-        @JsonProperty("ordinal") int ordinal,
-        @JsonProperty("title") String title,
-        @JsonProperty("description") String description,
-        @JsonProperty("status") TaskStatus status
-    ) {
+    public Task(String id, String tasklistId, int ordinal, String title, String description,
+                Integer statusId) {
         this.id = id;
         this.tasklistId = tasklistId;
         this.ordinal = ordinal;
         this.title = title;
         this.description = description;
-        this.status = status.name();
+        this.statusId = statusId;
     }
 
     public String id() { return id; }
@@ -61,7 +56,6 @@ public class Task extends PanacheEntityBase implements StatusBearing {
     public int ordinal() { return ordinal; }
     public String title() { return title; }
     public String description() { return description; }
-    public TaskStatus status() { return TaskStatus.valueOf(status); }
 
     @Override
     public Integer statusId() { return statusId; }
@@ -72,14 +66,15 @@ public class Task extends PanacheEntityBase implements StatusBearing {
     @Override
     public String legacyStatusCode() { return status; }
 
-    public static Task create(String tasklistId, int ordinal, String title, String description) {
+    public static Task create(String tasklistId, int ordinal, String title, String description,
+                              Integer statusId) {
         return new Task(
             IdProviderHolder.provider().nextId(),
             tasklistId,
             ordinal,
             title,
             description,
-            TaskStatus.TODO
+            statusId
         );
     }
 }

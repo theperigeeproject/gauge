@@ -3,19 +3,20 @@ package pl.perigee.gauge.resource;
 import pl.perigee.gauge.domain.CreateProjectRequest;
 import pl.perigee.gauge.domain.CreateIssueRequest;
 import pl.perigee.gauge.domain.Issue;
-import pl.perigee.gauge.domain.IssueStatus;
 import pl.perigee.gauge.domain.PatchProjectRequest;
 import pl.perigee.gauge.domain.Priority;
 import pl.perigee.gauge.domain.Project;
 import pl.perigee.gauge.domain.ProjectAnalysisResult;
 import pl.perigee.gauge.domain.ReparentProjectRequest;
 import pl.perigee.gauge.domain.SortOption;
+import pl.perigee.gauge.domain.StatusBase;
+import pl.perigee.gauge.domain.StatusLevel;
+import pl.perigee.gauge.resource.dto.ViewMapper;
 import pl.perigee.gauge.security.ProjectAccessGuard;
 import pl.perigee.gauge.service.IssueService;
 import pl.perigee.gauge.service.InputParser;
 import pl.perigee.gauge.service.ProjectAnalysisService;
 import pl.perigee.gauge.service.ProjectService;
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -50,6 +51,9 @@ public class ProjectResource {
     @Inject
     InputParser inputParser;
 
+    @Inject
+    ViewMapper viewMapper;
+
     @Context
     SecurityContext securityContext;
 
@@ -65,7 +69,7 @@ public class ProjectResource {
         }
         Priority priority = body.priority() != null ? body.priority() : Priority.NORMAL;
         Issue issue = issueService.create(projectId, body.title(), body.description(), priority);
-        return Response.status(Response.Status.CREATED).entity(issue).build();
+        return Response.status(Response.Status.CREATED).entity(viewMapper.issue(issue)).build();
     }
 
     @Operation(
@@ -104,16 +108,19 @@ public class ProjectResource {
                 .collect(Collectors.toSet());
         }
 
-        Set<IssueStatus> statuses = null;
+        Set<StatusBase> statuses = null;
         if (status != null && !status.isBlank()) {
+            // Codes are resolved against the ISSUE level once, here; an unknown code is a 400
+            // naming the valid set (ADR 0018), never a silent empty result.
             statuses = Arrays.stream(status.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .map(inputParser::requiredIssueStatus)
+                .map(code -> inputParser.requiredStatus(StatusLevel.ISSUE, code))
                 .collect(Collectors.toSet());
         }
 
-        return Response.ok(issueService.findByProjectIdSortedAndFiltered(projectId, sortOption, priorities, statuses)).build();
+        return Response.ok(viewMapper.issues(
+            issueService.findByProjectIdSortedAndFiltered(projectId, sortOption, priorities, statuses))).build();
     }
 
     @Operation(
@@ -126,7 +133,7 @@ public class ProjectResource {
             return forbidden();
         }
         Project project = service.create(body.name(), body.description(), body.parentId());
-        return Response.status(Response.Status.CREATED).entity(project).build();
+        return Response.status(Response.Status.CREATED).entity(viewMapper.project(project)).build();
     }
 
     @Operation(
@@ -156,7 +163,7 @@ public class ProjectResource {
         projects = projects.stream()
             .filter(p -> accessGuard.canAccessProject(p.id()))
             .toList();
-        return Response.ok(projects).build();
+        return Response.ok(viewMapper.projects(projects)).build();
     }
 
     @Operation(
@@ -170,7 +177,7 @@ public class ProjectResource {
             return forbidden();
         }
         return service.findById(projectId)
-            .map(project -> Response.ok(project).build())
+            .map(project -> Response.ok(viewMapper.project(project)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -187,7 +194,7 @@ public class ProjectResource {
         if (service.findById(projectId).isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        return Response.ok(service.getAncestors(projectId)).build();
+        return Response.ok(viewMapper.projects(service.getAncestors(projectId))).build();
     }
 
     @Operation(
@@ -208,7 +215,7 @@ public class ProjectResource {
                 .build();
         }
         return service.patch(projectId, body.name(), body.description(), removalLock)
-            .map(project -> Response.ok(project).build())
+            .map(project -> Response.ok(viewMapper.project(project)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -226,7 +233,7 @@ public class ProjectResource {
             return forbidden();
         }
         return service.reparent(projectId, body.parentId())
-            .map(project -> Response.ok(project).build())
+            .map(project -> Response.ok(viewMapper.project(project)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 

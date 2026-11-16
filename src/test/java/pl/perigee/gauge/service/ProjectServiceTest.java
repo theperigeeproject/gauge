@@ -5,6 +5,7 @@ import pl.perigee.gauge.repository.IssueRepository;
 import pl.perigee.gauge.repository.ProjectRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
 import pl.perigee.gauge.repository.TaskRepository;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -38,6 +39,9 @@ class ProjectServiceTest {
     @Inject
     EntityManager em;
 
+    @Inject
+    StatusIds statusIds;
+
     @BeforeEach
     @Transactional
     void cleanUp() {
@@ -54,7 +58,7 @@ class ProjectServiceTest {
     }
 
     private Issue createIssue(String projectId, String title) {
-        Issue i = Issue.create(projectId, title, "desc", Priority.NORMAL);
+        Issue i = Issue.create(projectId, title, "desc", Priority.NORMAL, statusIds.issue("TODO"));
         issueRepository.save(i);
         return i;
     }
@@ -323,9 +327,10 @@ class ProjectServiceTest {
         Project child = createProject("Child", parent.id());
 
         Issue issue = createIssue(parent.id(), "Issue");
-        Tasklist tl = new Tasklist("TL000001", issue.id(), "Tasklist", TasklistStatus.TODO, null);
+        Tasklist tl = new Tasklist("TL000001", issue.id(), "Tasklist",
+            statusIds.tasklist("TODO"), null);
         tasklistRepository.save(tl);
-        Task t = new Task("T0000001", tl.id(), 0, "Task", "desc", TaskStatus.TODO);
+        Task t = new Task("T0000001", tl.id(), 0, "Task", "desc", statusIds.task("TODO"));
         taskRepository.save(t);
 
         assertTrue(projectService.cascadeDelete(parent.id()));
@@ -438,7 +443,7 @@ class ProjectServiceTest {
     @Test
     @Transactional
     void testSearchNullDescriptionNoNpe() {
-        Project p = new Project("P0000001", "Match", null, null, "");
+        Project p = new Project("P0000001", "Match", null, null, "", statusIds.project("OPENED"));
         projectRepository.save(p);
 
         List<Project> results = projectService.search("match");
@@ -482,7 +487,8 @@ class ProjectServiceTest {
     @Test
     @Transactional
     void testGetAncestorsDanglingParent() {
-        Project p = new Project("P0000001", "Orphan", "desc", "NONEXISTENT_PARENT", "");
+        Project p = new Project("P0000001", "Orphan", "desc", "NONEXISTENT_PARENT", "",
+            statusIds.project("OPENED"));
         projectRepository.save(p);
 
         List<Project> ancestors = projectService.getAncestors("P0000001");

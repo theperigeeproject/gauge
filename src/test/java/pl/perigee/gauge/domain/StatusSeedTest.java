@@ -180,7 +180,7 @@ class StatusSeedTest {
         }
 
         // And the business side is still hex-8, unaffected by the status rows.
-        Issue issue = Issue.create("00000001", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("00000001", "t", "d", Priority.NORMAL, null);
         assertEquals(8, issue.id().length());
         assertTrue(issue.id().matches("[0-9A-F]{8}"));
     }

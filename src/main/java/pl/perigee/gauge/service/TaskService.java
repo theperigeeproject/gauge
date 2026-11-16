@@ -1,7 +1,7 @@
 package pl.perigee.gauge.service;
 
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.Task;
-import pl.perigee.gauge.domain.TaskStatus;
 import pl.perigee.gauge.repository.TaskRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -9,16 +9,24 @@ import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Tasks. Same status rule as everywhere: writes resolve a code to an id, reads never see one
+ * (ADR 0020 §2/§4).
+ */
 @ApplicationScoped
 public class TaskService {
 
     @Inject
     TaskRepository repository;
 
+    @Inject
+    StatusService statusService;
+
     @Transactional
     public Task create(String tasklistId, String title, String description) {
         int ordinal = repository.findByTasklistId(tasklistId).size();
-        Task task = Task.create(tasklistId, ordinal, title, description);
+        Task task = Task.create(tasklistId, ordinal, title, description,
+            statusService.defaultStatusId(StatusLevel.TASK));
         return repository.save(task);
     }
 
@@ -45,30 +53,23 @@ public class TaskService {
     @Transactional
     public Optional<Task> patch(String id, String title, String description) {
         return repository.findById(id).map(existing -> {
-            Task updated = new Task(
-                existing.id(),
-                existing.tasklistId(),
-                existing.ordinal(),
-                title != null ? title : existing.title(),
-                description != null ? description : existing.description(),
-                existing.status()
-            );
-            return repository.save(updated);
+            if (title != null) {
+                existing.title = title;
+            }
+            if (description != null) {
+                existing.description = description;
+            }
+            return repository.save(existing);
         });
     }
 
+    /** @param code a status code for the TASK level; an unknown value is a 400, never a default */
     @Transactional
-    public Optional<Task> updateStatus(String id, TaskStatus status) {
+    public Optional<Task> updateStatus(String id, String code) {
+        Integer statusId = statusService.resolveForWrite(StatusLevel.TASK, code);
         return repository.findById(id).map(existing -> {
-            Task updated = new Task(
-                existing.id(),
-                existing.tasklistId(),
-                existing.ordinal(),
-                existing.title(),
-                existing.description(),
-                status
-            );
-            return repository.save(updated);
+            existing.setStatusId(statusId);
+            return repository.save(existing);
         });
     }
 
@@ -87,15 +88,8 @@ public class TaskService {
                     "Task " + taskId + " does not belong to tasklist " + tasklistId
                     + " (it belongs to " + existing.tasklistId() + ")");
             }
-            Task reordered = new Task(
-                existing.id(),
-                existing.tasklistId(),
-                ordinal,
-                existing.title(),
-                existing.description(),
-                existing.status()
-            );
-            repository.save(reordered);
+            existing.ordinal = ordinal;
+            repository.save(existing);
         }
     }
 

@@ -1,8 +1,8 @@
 package pl.perigee.gauge.service;
 
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.Task;
 import pl.perigee.gauge.domain.Tasklist;
-import pl.perigee.gauge.domain.TasklistStatus;
 import pl.perigee.gauge.repository.TasklistRepository;
 import pl.perigee.gauge.repository.TaskRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -11,6 +11,10 @@ import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Tasklists. Same status rule as everywhere: writes resolve a code to an id, reads never see one
+ * (ADR 0020 §2/§4).
+ */
 @ApplicationScoped
 public class TasklistService {
 
@@ -20,10 +24,14 @@ public class TasklistService {
     @Inject
     TaskRepository taskRepository;
 
+    @Inject
+    StatusService statusService;
+
     @Transactional
     public Tasklist create(String issueId, String title, String decomposesTaskId) {
         validateDecomposesTask(issueId, null, decomposesTaskId);
-        Tasklist tasklist = Tasklist.create(issueId, title, decomposesTaskId);
+        Tasklist tasklist = Tasklist.create(issueId, title, decomposesTaskId,
+            statusService.defaultStatusId(StatusLevel.TASKLIST));
         return repository.save(tasklist);
     }
 
@@ -49,28 +57,20 @@ public class TasklistService {
     @Transactional
     public Optional<Tasklist> patch(String id, String title) {
         return repository.findById(id).map(existing -> {
-            Tasklist updated = new Tasklist(
-                existing.id(),
-                existing.issueId(),
-                title != null ? title : existing.title(),
-                existing.status(),
-                existing.decomposesTaskId()
-            );
-            return repository.save(updated);
+            if (title != null) {
+                existing.title = title;
+            }
+            return repository.save(existing);
         });
     }
 
+    /** @param code a status code for the TASKLIST level; an unknown value is a 400, never a default */
     @Transactional
-    public Optional<Tasklist> updateStatus(String id, TasklistStatus status) {
+    public Optional<Tasklist> updateStatus(String id, String code) {
+        Integer statusId = statusService.resolveForWrite(StatusLevel.TASKLIST, code);
         return repository.findById(id).map(existing -> {
-            Tasklist updated = new Tasklist(
-                existing.id(),
-                existing.issueId(),
-                existing.title(),
-                status,
-                existing.decomposesTaskId()
-            );
-            return repository.save(updated);
+            existing.setStatusId(statusId);
+            return repository.save(existing);
         });
     }
 
@@ -78,14 +78,8 @@ public class TasklistService {
     public Optional<Tasklist> updateDecomposesTask(String id, String decomposesTaskId) {
         return repository.findById(id).map(existing -> {
             validateDecomposesTask(existing.issueId(), id, decomposesTaskId);
-            Tasklist updated = new Tasklist(
-                existing.id(),
-                existing.issueId(),
-                existing.title(),
-                existing.status(),
-                decomposesTaskId
-            );
-            return repository.save(updated);
+            existing.decomposesTaskId = decomposesTaskId;
+            return repository.save(existing);
         });
     }
 

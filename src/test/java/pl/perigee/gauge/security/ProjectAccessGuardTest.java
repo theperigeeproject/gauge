@@ -5,6 +5,7 @@ import pl.perigee.gauge.repository.IssueRepository;
 import pl.perigee.gauge.repository.ProjectRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
 import pl.perigee.gauge.repository.TaskRepository;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -38,6 +39,9 @@ class ProjectAccessGuardTest {
     @Inject
     EntityManager em;
 
+    @Inject
+    StatusIds statusIds;
+
     @BeforeEach
     @Transactional
     void cleanUp() {
@@ -51,25 +55,25 @@ class ProjectAccessGuardTest {
     // ---- helpers ----
 
     private Project createProject(String id, String name, String parentId) {
-        Project p = new Project(id, name, "desc", parentId, "");
+        Project p = new Project(id, name, "desc", parentId, "", statusIds.project("OPENED"));
         projectRepository.save(p);
         return p;
     }
 
     private Issue createIssue(String id, String projectId) {
-        Issue i = new Issue(id, projectId, "Issue " + id, "desc", IssueStatus.TODO, Priority.NORMAL);
+        Issue i = new Issue(id, projectId, "Issue " + id, "desc", statusIds.issue("TODO"), Priority.NORMAL);
         issueRepository.save(i);
         return i;
     }
 
     private Tasklist createTasklist(String id, String issueId) {
-        Tasklist tl = new Tasklist(id, issueId, "TL " + id, TasklistStatus.TODO, null);
+        Tasklist tl = new Tasklist(id, issueId, "TL " + id, statusIds.tasklist("TODO"), null);
         tasklistRepository.save(tl);
         return tl;
     }
 
     private Task createTask(String id, String tasklistId) {
-        Task t = new Task(id, tasklistId, 0, "Task " + id, "desc", TaskStatus.TODO);
+        Task t = new Task(id, tasklistId, 0, "Task " + id, "desc", statusIds.task("TODO"));
         taskRepository.save(t);
         return t;
     }

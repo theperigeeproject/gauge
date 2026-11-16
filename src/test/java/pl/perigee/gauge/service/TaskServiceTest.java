@@ -1,8 +1,10 @@
 package pl.perigee.gauge.service;
 
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.Task;
-import pl.perigee.gauge.domain.TaskStatus;
+import pl.perigee.gauge.domain.ValidationException;
 import pl.perigee.gauge.repository.TaskRepository;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -27,6 +29,16 @@ class TaskServiceTest {
     @Inject
     EntityManager em;
 
+    @Inject
+    StatusIds statusIds;
+
+    @Inject
+    StatusService statusService;
+
+    private String statusCode(Task task) {
+        return statusService.codeFor(StatusLevel.TASK, task.statusId());
+    }
+
     @BeforeEach
     @Transactional
     void cleanUp() {
@@ -39,8 +51,8 @@ class TaskServiceTest {
         return taskService.create(tasklistId, title, "desc");
     }
 
-    private Task createTaskDirect(String id, String tasklistId, int ordinal, String title, TaskStatus status) {
-        Task t = new Task(id, tasklistId, ordinal, title, "desc", status);
+    private Task createTaskDirect(String id, String tasklistId, int ordinal, String title, Integer statusId) {
+        Task t = new Task(id, tasklistId, ordinal, title, "desc", statusId);
         taskRepository.save(t);
         return t;
     }
@@ -56,7 +68,7 @@ class TaskServiceTest {
         assertEquals("TL000001", task.tasklistId());
         assertEquals("Test Task", task.title());
         assertEquals("Description", task.description());
-        assertEquals(TaskStatus.TODO, task.status());
+        assertEquals("TODO", statusCode(task), "a fresh task gets the level's default status");
         assertEquals(0, task.ordinal());
     }
 
@@ -108,9 +120,9 @@ class TaskServiceTest {
     @Test
     @Transactional
     void testFindByTasklistIdReturnsAllTasks() {
-        createTaskDirect("T0000001", "TL000001", 2, "Third", TaskStatus.TODO);
-        createTaskDirect("T0000002", "TL000001", 0, "First", TaskStatus.TODO);
-        createTaskDirect("T0000003", "TL000001", 1, "Second", TaskStatus.TODO);
+        createTaskDirect("T0000001", "TL000001", 2, "Third", statusIds.task("TODO"));
+        createTaskDirect("T0000002", "TL000001", 0, "First", statusIds.task("TODO"));
+        createTaskDirect("T0000003", "TL000001", 1, "Second", statusIds.task("TODO"));
 
         List<Task> tasks = taskService.findByTasklistId("TL000001");
         assertEquals(3, tasks.size());
@@ -182,36 +194,45 @@ class TaskServiceTest {
     @Transactional
     void testUpdateStatusToDoing() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.DOING);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "DOING");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.DOING, updated.get().status());
+        assertEquals("DOING", statusCode(updated.get()));
     }
 
     @Test
     @Transactional
     void testUpdateStatusToDone() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.DONE);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "DONE");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.DONE, updated.get().status());
+        assertEquals("DONE", statusCode(updated.get()));
     }
 
     @Test
     @Transactional
     void testUpdateStatusToFailed() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.FAILED);
+        Optional<Task> updated = taskService.updateStatus(created.id(), "FAILED");
         assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.FAILED, updated.get().status());
+        assertEquals("FAILED", statusCode(updated.get()));
     }
 
     @Test
     @Transactional
-    void testUpdateStatusToCanceled() {
+    void testUpdateStatusToCanceledIsFlagGated() {
         Task created = createTask("TL000001", "Test");
-        Optional<Task> updated = taskService.updateStatus(created.id(), TaskStatus.CANCELED);
-        assertTrue(updated.isPresent());
-        assertEquals(TaskStatus.CANCELED, updated.get().status());
+
+        // CANCELED is seeded as FINALIZED, and FINALIZED is an EXTENDED progress level: authoring it
+        // requires gauge.status.extended-progress-levels=true. That is ADR 0020 §7's wording ("using"
+        // a status is flag-gated), and it means the 400 must name the property that would allow it —
+        // not fall back to some other status. Reads of existing CANCELED rows are unaffected.
+        ValidationException e = assertThrows(ValidationException.class,
+            () -> taskService.updateStatus(created.id(), "CANCELED"));
+        assertEquals("STATUS_NOT_AVAILABLE", e.error());
+        assertTrue(e.getMessage().contains("gauge.status.extended-progress-levels"),
+            "the refusal must name the switch: " + e.getMessage());
+        assertEquals("TODO", statusCode(taskService.findById(created.id()).orElseThrow()),
+            "a refused write must leave the row untouched");
     }
 
     // ---- 7: reorder — reassigns ordinals 0,1,2... based on provided ID list ----
@@ -274,7 +295,7 @@ class TaskServiceTest {
     @Test
     @Transactional
     void testUpdateStatusNotFound() {
-        Optional<Task> updated = taskService.updateStatus("NONEXISTENT", TaskStatus.DOING);
+        Optional<Task> updated = taskService.updateStatus("NONEXISTENT", "DOING");
         assertFalse(updated.isPresent());
     }
 
@@ -332,7 +353,7 @@ class TaskServiceTest {
     @Test
     @Transactional
     void testSearchNullDescriptionNoNpe() {
-        Task t = new Task("T0000001", "TL000001", 0, "Match", null, TaskStatus.TODO);
+        Task t = new Task("T0000001", "TL000001", 0, "Match", null, statusIds.task("TODO"));
         taskRepository.save(t);
 
         List<Task> results = taskService.search("match");

@@ -1,28 +1,38 @@
 package pl.perigee.gauge.service;
 
-import pl.perigee.gauge.domain.IssueStatus;
 import pl.perigee.gauge.domain.Priority;
+import pl.perigee.gauge.domain.StatusBase;
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.ValidationException;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
 /**
- * Parses caller-supplied enum-ish values into enums, and rejects unknown values with a 400 that
- * names the valid set. Never coerces, never returns null for garbage, and never lets a Jackson
- * enum error reach the client.
+ * Parses caller-supplied enum-ish values, and rejects unknown ones with a 400 that names the valid
+ * set. Never coerces, never returns null for garbage, and never lets a Jackson enum error reach the
+ * client.
  *
  * <p>Before this existed an unknown value such as {@code priority=MEDIUM} produced an opaque
  * Jackson body ({@code {"objectName":"Class","attributeName":"priority",...}}) instead of a
  * message a human or an agent could act on — see issue 0000149B.
  *
- * <p>Placement: lives in {@code service} because it is a cross-cutting input concern; the
- * codebase has no {@code util} package, and creating one for a single class would be worse than
- * putting it next to the services that use it.
+ * <p><b>Statuses are no longer parsed here.</b> Since increment 4 of 0000186F they are data, so the
+ * vocabulary lives in {@code StatusService} and has to be asked for per level. This class is a thin
+ * facade over it, which keeps the input contract (400 {@code INVALID_STATUS} naming the valid codes)
+ * in one place without a second copy of the translation rule (ADR 0020 §2/§4).
+ *
+ * <p>Placement: lives in {@code service} because it is a cross-cutting input concern; the codebase
+ * has no {@code util} package, and creating one for a single class would be worse than putting it
+ * next to the services that use it.
  */
 @ApplicationScoped
 public class InputParser {
+
+    @Inject
+    StatusService statusService;
 
     /**
      * @return the parsed priority, or {@code null} when nothing was supplied (caller applies the default)
@@ -56,34 +66,21 @@ public class InputParser {
     }
 
     /**
-     * @return the parsed status, or {@code null} when nothing was supplied
-     * @throws ValidationException when a value was supplied but is not a known status
+     * Resolves a caller-supplied status code for a level.
+     *
+     * @return the status row, or {@code null} when nothing was supplied
+     * @throws ValidationException naming the valid codes when the value is unknown or flag-disabled
      */
-    public IssueStatus issueStatus(String raw) {
+    public StatusBase status(StatusLevel level, String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
-        String value = raw.trim();
-        for (IssueStatus candidate : IssueStatus.values()) {
-            if (candidate.name().equalsIgnoreCase(value)) {
-                return candidate;
-            }
-        }
-        throw new ValidationException(
-            "INVALID_STATUS",
-            "Invalid status '" + raw + "'. Valid values: " + names(IssueStatus.values()) + "."
-        );
+        return statusService.require(level, raw);
     }
 
-    public IssueStatus requiredIssueStatus(String raw) {
-        IssueStatus parsed = issueStatus(raw);
-        if (parsed == null) {
-            throw new ValidationException(
-                "INVALID_STATUS",
-                "Status is required. Valid values: " + names(IssueStatus.values()) + "."
-            );
-        }
-        return parsed;
+    /** Same, but a missing value is an error rather than {@code null}. */
+    public StatusBase requiredStatus(StatusLevel level, String raw) {
+        return statusService.require(level, raw);
     }
 
     private static <E extends Enum<E>> String names(E[] values) {

@@ -33,7 +33,8 @@ class StatusHelpersTest {
     @Test
     @TestTransaction
     void anUnmigratedRowReadsAsNeedsMigrationInsteadOfThrowing() {
-        Issue issue = Issue.create("PROJ1000", "unmigrated", "d", Priority.NORMAL);
+        // null statusId is the point of this test: a legal, unmigrated row.
+        Issue issue = Issue.create("PROJ1000", "unmigrated", "d", Priority.NORMAL, null);
         issue.persist();
         assertNull(issue.statusId, "the factory leaves the id null until a service sets it");
 
@@ -45,7 +46,7 @@ class StatusHelpersTest {
     @Test
     @TestTransaction
     void aNonNullUnknownIdIsStillLoud() {
-        Issue issue = Issue.create("PROJ1001", "corrupt", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ1001", "corrupt", "d", Priority.NORMAL, null);
         issue.persist();
         issue.statusId = 999_999;
 
@@ -128,7 +129,7 @@ class StatusHelpersTest {
     @Test
     @TestTransaction
     void theSameIdMeansDifferentThingsPerLevelAndEachLevelResolvesItsOwn() {
-        Task task = Task.create("TL100000", 0, "t", "d");
+        Task task = Task.create("TL100000", 0, "t", "d", null);
         task.persist();
         // A task with no status id reads as the TASK-level fallback, never the issue one.
         assertEquals("NEEDS_MIGRATION", service.codeOf(StatusLevel.TASK, task));

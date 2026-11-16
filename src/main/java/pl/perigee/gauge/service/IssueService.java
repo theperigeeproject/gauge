@@ -2,9 +2,10 @@ package pl.perigee.gauge.service;
 
 import pl.perigee.gauge.config.IssueDescriptionPolicy;
 import pl.perigee.gauge.domain.Issue;
-import pl.perigee.gauge.domain.IssueStatus;
 import pl.perigee.gauge.domain.Priority;
 import pl.perigee.gauge.domain.SortOption;
+import pl.perigee.gauge.domain.StatusBase;
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.repository.IssueRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
 import pl.perigee.gauge.repository.TaskRepository;
@@ -17,6 +18,19 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Issues. Statuses are <b>ids</b> on the entity and <b>codes</b> on the wire, and the translation
+ * happens only in {@link StatusService} (ADR 0020 §2/§4):
+ *
+ * <ul>
+ *   <li>writes resolve a caller's code through {@code resolveForWrite} and persist the id;</li>
+ *   <li>reads never look at a code — ordering asks the service for the precedence, filtering asks it
+ *       to resolve the requested codes once.</li>
+ * </ul>
+ *
+ * <p>Nothing here names a status. A rename is free, and a custom status sorts and filters correctly
+ * without a code change.
+ */
 @ApplicationScoped
 public class IssueService {
 
@@ -32,11 +46,15 @@ public class IssueService {
     @Inject
     IssueDescriptionPolicy descriptionPolicy;
 
+    @Inject
+    StatusService statusService;
+
     @Transactional
     public Issue create(String projectId, String title, String description, Priority priority) {
         // Both write paths funnel through the policy, so the length contract cannot diverge.
         descriptionPolicy.validate(description);
-        Issue issue = Issue.create(projectId, title, description, priority);
+        Issue issue = Issue.create(projectId, title, description, priority,
+            statusService.defaultStatusId(StatusLevel.ISSUE));
         return repository.save(issue);
     }
 
@@ -52,11 +70,15 @@ public class IssueService {
         return repository.findByProjectId(projectId);
     }
 
+    /**
+     * @param statuses resolved status rows, already validated against the level's available set by
+     *                 {@code InputParser}; null or empty means "no filter"
+     */
     public List<Issue> findByProjectIdSortedAndFiltered(
         String projectId,
         SortOption sort,
         Set<Priority> priorities,
-        Set<IssueStatus> statuses
+        Set<StatusBase> statuses
     ) {
         List<Issue> issues = repository.findByProjectId(projectId);
 
@@ -68,7 +90,7 @@ public class IssueService {
         }
         if (statuses != null && !statuses.isEmpty()) {
             issues = issues.stream()
-                .filter(i -> statuses.contains(i.status()))
+                .filter(i -> statusService.matchesFilter(StatusLevel.ISSUE, i.statusId(), statuses))
                 .collect(Collectors.toList());
         }
 
@@ -90,21 +112,21 @@ public class IssueService {
                 break;
             case PRIORITY_STATUS_NAME:
                 cmp = Comparator.comparingInt((Issue i) -> priorityOrder(i.priority()))
-                    .thenComparingInt(i -> statusOrder(i.status()))
+                    .thenComparingInt(this::statusOrder)
                     .thenComparing(i -> i.title() != null ? i.title().toLowerCase() : "", String::compareTo);
                 break;
             case PRIORITY_NAME_STATUS:
                 cmp = Comparator.comparingInt((Issue i) -> priorityOrder(i.priority()))
                     .thenComparing(i -> i.title() != null ? i.title().toLowerCase() : "", String::compareTo)
-                    .thenComparingInt(i -> statusOrder(i.status()));
+                    .thenComparingInt(this::statusOrder);
                 break;
             case STATUS_PRIORITY_NAME:
-                cmp = Comparator.comparingInt((Issue i) -> statusOrder(i.status()))
+                cmp = Comparator.comparingInt(this::statusOrder)
                     .thenComparingInt(i -> priorityOrder(i.priority()))
                     .thenComparing(i -> i.title() != null ? i.title().toLowerCase() : "", String::compareTo);
                 break;
             case STATUS_NAME_PRIORITY:
-                cmp = Comparator.comparingInt((Issue i) -> statusOrder(i.status()))
+                cmp = Comparator.comparingInt(this::statusOrder)
                     .thenComparing(i -> i.title() != null ? i.title().toLowerCase() : "", String::compareTo)
                     .thenComparingInt(i -> priorityOrder(i.priority()));
                 break;
@@ -119,13 +141,16 @@ public class IssueService {
         return 2 - p.severity;
     }
 
-    private int statusOrder(IssueStatus s) {
-        return switch (s) {
-            case TODO -> 0;
-            case DOING -> 1;
-            case DONE -> 2;
-            case INACTIVE -> 3;
-        };
+    /**
+     * The status sort key, straight from {@code precedenceValue} (ADR 0020 §6).
+     *
+     * <p>This reproduces the locked ADR 0015 order (TODO, DOING, DONE, INACTIVE) as long as the
+     * seeds keep their precedences — and, unlike a switch on an enum, it stays correct when an admin
+     * adds a status in the middle. An unmigrated row sorts by the migration status's precedence,
+     * i.e. last.
+     */
+    private int statusOrder(Issue issue) {
+        return statusService.precedenceOf(StatusLevel.ISSUE, issue.statusId());
     }
 
     public List<Issue> search(String q) {
@@ -143,60 +168,42 @@ public class IssueService {
         // 400, not 404. Documented in ADR 0018.
         descriptionPolicy.validate(description);
         return repository.findById(id).map(existing -> {
-            Issue updated = new Issue(
-                existing.id(),
-                existing.projectId(),
-                title != null ? title : existing.title(),
-                description != null ? description : existing.description(),
-                existing.status(),
-                existing.priority()
-            );
-            return repository.save(updated);
+            if (title != null) {
+                existing.title = title;
+            }
+            if (description != null) {
+                existing.description = description;
+            }
+            return repository.save(existing);
         });
     }
 
+    /**
+     * @param code a status code for the ISSUE level; validated by {@code StatusService} so an
+     *             unknown value is a 400 naming the valid set, never a silent default
+     */
     @Transactional
-    public Optional<Issue> updateStatus(String id, IssueStatus status) {
+    public Optional<Issue> updateStatus(String id, String code) {
+        Integer statusId = statusService.resolveForWrite(StatusLevel.ISSUE, code);
         return repository.findById(id).map(existing -> {
-            Issue updated = new Issue(
-                existing.id(),
-                existing.projectId(),
-                existing.title(),
-                existing.description(),
-                status,
-                existing.priority()
-            );
-            return repository.save(updated);
+            existing.setStatusId(statusId);
+            return repository.save(existing);
         });
     }
 
     @Transactional
     public Optional<Issue> updatePriority(String id, Priority priority) {
         return repository.findById(id).map(existing -> {
-            Issue updated = new Issue(
-                existing.id(),
-                existing.projectId(),
-                existing.title(),
-                existing.description(),
-                existing.status(),
-                priority
-            );
-            return repository.save(updated);
+            existing.priority = priority.name();
+            return repository.save(existing);
         });
     }
 
     @Transactional
     public Optional<Issue> moveToProject(String id, String newProjectId) {
         return repository.findById(id).map(existing -> {
-            Issue updated = new Issue(
-                existing.id(),
-                newProjectId,
-                existing.title(),
-                existing.description(),
-                existing.status(),
-                existing.priority()
-            );
-            return repository.save(updated);
+            existing.projectId = newProjectId;
+            return repository.save(existing);
         });
     }
 

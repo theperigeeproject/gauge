@@ -7,6 +7,7 @@ import pl.perigee.gauge.domain.ReorderTasksRequest;
 import pl.perigee.gauge.domain.Task;
 import pl.perigee.gauge.domain.Tasklist;
 import pl.perigee.gauge.domain.UpdateTasklistStatusRequest;
+import pl.perigee.gauge.resource.dto.ViewMapper;
 import pl.perigee.gauge.security.ProjectAccessGuard;
 import pl.perigee.gauge.service.TaskService;
 import pl.perigee.gauge.service.TasklistService;
@@ -33,6 +34,9 @@ public class TasklistResource {
     @Inject
     ProjectAccessGuard accessGuard;
 
+    @Inject
+    ViewMapper viewMapper;
+
     @Operation(
         operationId = "tracker_list_tasklists",
         summary = "List all tasklists, optionally filtered by ?q=searchPhrase (case-insensitive match on title)"
@@ -48,7 +52,7 @@ public class TasklistResource {
         tasklists = tasklists.stream()
             .filter(tl -> accessGuard.canAccessTasklist(tl.id()))
             .toList();
-        return Response.ok(tasklists).build();
+        return Response.ok(viewMapper.tasklists(tasklists)).build();
     }
 
     @Operation(
@@ -62,7 +66,7 @@ public class TasklistResource {
             return forbidden();
         }
         Task task = taskService.create(tasklistId, body.title(), body.description());
-        return Response.status(Response.Status.CREATED).entity(task).build();
+        return Response.status(Response.Status.CREATED).entity(viewMapper.task(task)).build();
     }
 
     @Operation(
@@ -75,7 +79,7 @@ public class TasklistResource {
         if (!accessGuard.canAccessTasklist(tasklistId)) {
             return forbidden();
         }
-        return Response.ok(taskService.findByTasklistId(tasklistId)).build();
+        return Response.ok(viewMapper.tasks(taskService.findByTasklistId(tasklistId))).build();
     }
 
     @Operation(
@@ -89,7 +93,7 @@ public class TasklistResource {
             return forbidden();
         }
         taskService.reorder(tasklistId, body.taskIds());
-        return Response.ok(taskService.findByTasklistId(tasklistId)).build();
+        return Response.ok(viewMapper.tasks(taskService.findByTasklistId(tasklistId))).build();
     }
 
     @Operation(
@@ -103,7 +107,7 @@ public class TasklistResource {
             return forbidden();
         }
         return service.findById(tasklistId)
-            .map(tasklist -> Response.ok(tasklist).build())
+            .map(tasklist -> Response.ok(viewMapper.tasklist(tasklist)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -118,7 +122,7 @@ public class TasklistResource {
             return forbidden();
         }
         return service.patch(tasklistId, body.title())
-            .map(tasklist -> Response.ok(tasklist).build())
+            .map(tasklist -> Response.ok(viewMapper.tasklist(tasklist)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -133,7 +137,7 @@ public class TasklistResource {
             return forbidden();
         }
         return service.updateStatus(tasklistId, body.status())
-            .map(tasklist -> Response.ok(tasklist).build())
+            .map(tasklist -> Response.ok(viewMapper.tasklist(tasklist)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
@@ -148,7 +152,7 @@ public class TasklistResource {
             return forbidden();
         }
         return service.updateDecomposesTask(tasklistId, body.taskId())
-            .map(tasklist -> Response.ok(tasklist).build())
+            .map(tasklist -> Response.ok(viewMapper.tasklist(tasklist)).build())
             .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 

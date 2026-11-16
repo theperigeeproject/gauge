@@ -17,7 +17,7 @@ public class IssueRepository {
             managed.projectId = issue.projectId;
             managed.title = issue.title;
             managed.description = issue.description;
-            managed.status = issue.status;
+            managed.statusId = issue.statusId;
             managed.priority = issue.priority;
             managed.persist();
             return managed;

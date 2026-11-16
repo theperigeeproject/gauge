@@ -1,6 +1,7 @@
 package pl.perigee.gauge.service;
 
 import pl.perigee.gauge.domain.Project;
+import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.repository.IssueRepository;
 import pl.perigee.gauge.repository.ProjectRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
@@ -27,9 +28,16 @@ public class ProjectService {
     @Inject
     TaskRepository taskRepository;
 
+    @Inject
+    StatusService statusService;
+
     @Transactional
     public Project create(String name, String description, String parentId) {
-        Project project = Project.create(name, description, parentId);
+        // A fresh project gets the level's default status (lowest precedence, OPENED today).
+        // Before increment 4 it was left null and read as NEEDS_MIGRATION until an admin ran the
+        // migration, which was legal but wrong-feeling.
+        Project project = Project.create(name, description, parentId,
+            statusService.defaultStatusId(StatusLevel.PROJECT));
         return repository.save(project);
     }
 
@@ -78,14 +86,16 @@ public class ProjectService {
     @Transactional
     public Optional<Project> patch(String id, String name, String description, String removalLock) {
         return repository.findById(id).map(existing -> {
-            Project updated = new Project(
-                existing.id(),
-                name != null ? name : existing.name(),
-                description != null ? description : existing.description(),
-                existing.parentId(),
-                removalLock != null ? removalLock : existing.removalLock()
-            );
-            return repository.save(updated);
+            if (name != null) {
+                existing.name = name;
+            }
+            if (description != null) {
+                existing.description = description;
+            }
+            if (removalLock != null) {
+                existing.removalLock = removalLock;
+            }
+            return repository.save(existing);
         });
     }
 
@@ -107,14 +117,8 @@ public class ProjectService {
             }
         }
         return repository.findById(id).map(existing -> {
-            Project moved = new Project(
-                existing.id(),
-                existing.name(),
-                existing.description(),
-                newParentId,
-                existing.removalLock()
-            );
-            return repository.save(moved);
+            existing.parentId = newParentId;
+            return repository.save(existing);
         });
     }
 

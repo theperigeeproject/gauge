@@ -5,6 +5,7 @@ import pl.perigee.gauge.repository.IssueRepository;
 import pl.perigee.gauge.repository.ProjectRepository;
 import pl.perigee.gauge.repository.TaskRepository;
 import pl.perigee.gauge.repository.TasklistRepository;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -37,6 +38,9 @@ class ProjectAnalysisServiceTest {
     @Inject
     EntityManager em;
 
+    @Inject
+    StatusIds statusIds;
+
     @BeforeEach
     @Transactional
     void cleanUp() {
@@ -49,25 +53,28 @@ class ProjectAnalysisServiceTest {
     // ---- helpers ----
 
     private Project createProject(String id, String name, String parentId) {
-        Project p = new Project(id, name, "desc", parentId, "");
+        Project p = new Project(id, name, "desc", parentId, "", statusIds.project("OPENED"));
         projectRepository.save(p);
         return p;
     }
 
-    private Issue createIssue(String id, String projectId, String title, Priority priority, IssueStatus status) {
-        Issue i = new Issue(id, projectId, title, "desc", status, priority);
+    /** @param issueStatusCode a status CODE for the issue level; the id is resolved here, as a caller would */
+    private Issue createIssue(String id, String projectId, String title, Priority priority,
+                              String issueStatusCode) {
+        Issue i = new Issue(id, projectId, title, "desc", statusIds.issue(issueStatusCode), priority);
         issueRepository.save(i);
         return i;
     }
 
     private Tasklist createTasklist(String id, String issueId, String title) {
-        Tasklist tl = new Tasklist(id, issueId, title, TasklistStatus.TODO, null);
+        Tasklist tl = new Tasklist(id, issueId, title, statusIds.tasklist("TODO"), null);
         tasklistRepository.save(tl);
         return tl;
     }
 
-    private Task createTask(String id, String tasklistId, int ordinal, String title, TaskStatus status) {
-        Task t = new Task(id, tasklistId, ordinal, title, "desc", status);
+    private Task createTask(String id, String tasklistId, int ordinal, String title,
+                            String taskStatusCode) {
+        Task t = new Task(id, tasklistId, ordinal, title, "desc", statusIds.task(taskStatusCode));
         taskRepository.save(t);
         return t;
     }
@@ -87,7 +94,7 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testSingleProjectOneTodoIssue() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -103,9 +110,9 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testSingleProjectMixedStatusIssues() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Todo", Priority.NORMAL, IssueStatus.TODO);
-        createIssue("I0000002", "P0000001", "Doing", Priority.NORMAL, IssueStatus.DOING);
-        createIssue("I0000003", "P0000001", "Done", Priority.NORMAL, IssueStatus.DONE);
+        createIssue("I0000001", "P0000001", "Todo", Priority.NORMAL, "TODO");
+        createIssue("I0000002", "P0000001", "Doing", Priority.NORMAL, "DOING");
+        createIssue("I0000003", "P0000001", "Done", Priority.NORMAL, "DONE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -120,7 +127,7 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testSingleProjectHighPriorityTodo() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "High", Priority.HIGH, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "High", Priority.HIGH, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.HIGH, results.get("P0000001").bubbledPriority);
@@ -132,8 +139,8 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testAllIssuesDone() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Done1", Priority.HIGH, IssueStatus.DONE);
-        createIssue("I0000002", "P0000001", "Done2", Priority.LOW, IssueStatus.DONE);
+        createIssue("I0000001", "P0000001", "Done1", Priority.HIGH, "DONE");
+        createIssue("I0000002", "P0000001", "Done2", Priority.LOW, "DONE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -150,8 +157,8 @@ class ProjectAnalysisServiceTest {
     void testParentWithSubprojectRecursiveCounts() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000001", "ParentIssue", Priority.NORMAL, IssueStatus.TODO);
-        createIssue("I0000002", "P0000002", "ChildIssue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "ParentIssue", Priority.NORMAL, "TODO");
+        createIssue("I0000002", "P0000002", "ChildIssue", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(1, results.get("P0000002").issueTodo);
@@ -167,7 +174,7 @@ class ProjectAnalysisServiceTest {
         createProject("P0000001", "Root", null);
         createProject("P0000002", "Child", "P0000001");
         createProject("P0000003", "Grandchild", "P0000002");
-        createIssue("I0000001", "P0000003", "Deep", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000003", "Deep", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(1, results.get("P0000003").issueTodo);
@@ -185,7 +192,7 @@ class ProjectAnalysisServiceTest {
         createProject("P0000001", "Root", null);
         createProject("P0000002", "Child", "P0000001");
         createProject("P0000003", "Grandchild", "P0000002");
-        createIssue("I0000001", "P0000003", "High", Priority.HIGH, IssueStatus.TODO);
+        createIssue("I0000001", "P0000003", "High", Priority.HIGH, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.HIGH, results.get("P0000003").bubbledPriority);
@@ -200,8 +207,8 @@ class ProjectAnalysisServiceTest {
     void testNormalInParentHighInChildHighWins() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000001", "Normal", Priority.NORMAL, IssueStatus.TODO);
-        createIssue("I0000002", "P0000002", "High", Priority.HIGH, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Normal", Priority.NORMAL, "TODO");
+        createIssue("I0000002", "P0000002", "High", Priority.HIGH, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.HIGH, results.get("P0000002").bubbledPriority);
@@ -215,10 +222,10 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testTaskAggregationThroughTasklists() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, "TODO");
         createTasklist("TL000001", "I0000001", "TL");
-        createTask("T0000001", "TL000001", 0, "Task1", TaskStatus.TODO);
-        createTask("T0000002", "TL000001", 1, "Task2", TaskStatus.DOING);
+        createTask("T0000001", "TL000001", 0, "Task1", "TODO");
+        createTask("T0000002", "TL000001", 1, "Task2", "DOING");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -232,18 +239,28 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testOnlyTodoAndDoingTasksCounted() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, "TODO");
         createTasklist("TL000001", "I0000001", "TL");
-        createTask("T0000001", "TL000001", 0, "Todo", TaskStatus.TODO);
-        createTask("T0000002", "TL000001", 1, "Doing", TaskStatus.DOING);
-        createTask("T0000003", "TL000001", 2, "Done", TaskStatus.DONE);
-        createTask("T0000004", "TL000001", 3, "Failed", TaskStatus.FAILED);
-        createTask("T0000005", "TL000001", 4, "Canceled", TaskStatus.CANCELED);
+        createTask("T0000001", "TL000001", 0, "Todo", "TODO");
+        createTask("T0000002", "TL000001", 1, "Doing", "DOING");
+        createTask("T0000003", "TL000001", 2, "Done", "DONE");
+        createTask("T0000004", "TL000001", 3, "Failed", "FAILED");
+        // CANCELED is FINALIZED, and FINALIZED is flag-gated for AUTHORING — so this row is built
+        // directly, the way a row written before the flag existed would look. Analysis must not care
+        // about authorability: it counts by axes.
+        Task canceled = new Task("T0000005", "TL000001", 4, "Canceled", "desc",
+            statusIds.any(StatusLevel.TASK, "CANCELED"));
+        taskRepository.save(canceled);
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
         assertEquals(1, r.taskTodo);
-        assertEquals(1, r.taskDoing);
+
+        // Two, not one: FAILED is HALTED but REGULAR, i.e. ACTIVE, so it buckets with "doing".
+        // The old enum switch silently dropped it (it only knew TODO/DOING), which made a failed
+        // task invisible in the tree. Bucketing by the axes cannot drop a status, which is the
+        // property increment 4 is about (ADR 0020 §6). DONE and CANCELED are terminal and stay out.
+        assertEquals(2, r.taskDoing, "DOING + FAILED are active, DONE and CANCELED are terminal");
     }
 
     // ---- 11: LOW priority TODO → bubbled=LOW ----
@@ -252,7 +269,7 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testLowPriorityTodoBubbledLow() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Low", Priority.LOW, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Low", Priority.LOW, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.LOW, results.get("P0000001").bubbledPriority);
@@ -265,8 +282,8 @@ class ProjectAnalysisServiceTest {
     void testLowInParentNormalInChildNormalWins() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000001", "Low", Priority.LOW, IssueStatus.TODO);
-        createIssue("I0000002", "P0000002", "Normal", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Low", Priority.LOW, "TODO");
+        createIssue("I0000002", "P0000002", "Normal", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.NORMAL, results.get("P0000002").bubbledPriority);
@@ -283,7 +300,7 @@ class ProjectAnalysisServiceTest {
     void testDoneChildAndNoneParentPropagatesDone() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000002", "Done", Priority.NORMAL, IssueStatus.DONE);
+        createIssue("I0000001", "P0000002", "Done", Priority.NORMAL, "DONE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.DONE, results.get("P0000002").bubbledPriority);
@@ -299,8 +316,8 @@ class ProjectAnalysisServiceTest {
         createProject("P0000001", "Root", null);
         createProject("P0000002", "Child1", "P0000001");
         createProject("P0000003", "Child2", "P0000001");
-        createIssue("I0000001", "P0000002", "Issue1", Priority.NORMAL, IssueStatus.TODO);
-        createIssue("I0000002", "P0000003", "Issue2", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000002", "Issue1", Priority.NORMAL, "TODO");
+        createIssue("I0000002", "P0000003", "Issue2", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -315,8 +332,8 @@ class ProjectAnalysisServiceTest {
     void testProjectWithIssuesAndSubprojectsBothAggregated() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000001", "ParentIssue", Priority.NORMAL, IssueStatus.TODO);
-        createIssue("I0000002", "P0000002", "ChildIssue", Priority.HIGH, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "ParentIssue", Priority.NORMAL, "TODO");
+        createIssue("I0000002", "P0000002", "ChildIssue", Priority.HIGH, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -332,7 +349,7 @@ class ProjectAnalysisServiceTest {
     void testEmptySubprojectUnderParentWithIssues() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "EmptyChild", "P0000001");
-        createIssue("I0000001", "P0000001", "ParentIssue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "ParentIssue", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -347,7 +364,7 @@ class ProjectAnalysisServiceTest {
     void testProjectWithNoIssuesButSubprojectsWithIssues() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000002", "ChildIssue", Priority.HIGH, IssueStatus.TODO);
+        createIssue("I0000001", "P0000002", "ChildIssue", Priority.HIGH, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -362,11 +379,11 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testTasksAcrossMultipleTasklistsInSameIssue() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, "TODO");
         createTasklist("TL000001", "I0000001", "TL1");
         createTasklist("TL000002", "I0000001", "TL2");
-        createTask("T0000001", "TL000001", 0, "Task1", TaskStatus.TODO);
-        createTask("T0000002", "TL000002", 0, "Task2", TaskStatus.DOING);
+        createTask("T0000001", "TL000001", 0, "Task1", "TODO");
+        createTask("T0000002", "TL000002", 0, "Task2", "DOING");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -380,7 +397,7 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testNullParentIdProjectsTreatedAsRoots() {
         createProject("P0000001", "Root", null);
-        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Issue", Priority.NORMAL, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertTrue(results.containsKey("P0000001"));
@@ -395,7 +412,7 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testActiveCountGreaterThanZeroHighestPriorityNull() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Doing", Priority.NORMAL, IssueStatus.DOING);
+        createIssue("I0000001", "P0000001", "Doing", Priority.NORMAL, "DOING");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.NORMAL, results.get("P0000001").bubbledPriority);
@@ -408,8 +425,8 @@ class ProjectAnalysisServiceTest {
     void testDoneChildUnderParentWithHighActiveIssue() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000001", "High", Priority.HIGH, IssueStatus.TODO);
-        createIssue("I0000002", "P0000002", "Done", Priority.LOW, IssueStatus.DONE);
+        createIssue("I0000001", "P0000001", "High", Priority.HIGH, "TODO");
+        createIssue("I0000002", "P0000002", "Done", Priority.LOW, "DONE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.DONE, results.get("P0000002").bubbledPriority);
@@ -424,7 +441,7 @@ class ProjectAnalysisServiceTest {
     void testProjectWithNoIssuesButSubprojectWithOnlyDone() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000002", "Done", Priority.NORMAL, IssueStatus.DONE);
+        createIssue("I0000001", "P0000002", "Done", Priority.NORMAL, "DONE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.DONE, results.get("P0000002").bubbledPriority);
@@ -456,7 +473,7 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testInactiveIssueCountedButNotBubbled() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Parked", Priority.HIGH, IssueStatus.INACTIVE);
+        createIssue("I0000001", "P0000001", "Parked", Priority.HIGH, "INACTIVE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -474,8 +491,8 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testActiveLowBeatsParkedHigh() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Parked", Priority.HIGH, IssueStatus.INACTIVE);
-        createIssue("I0000002", "P0000001", "Active", Priority.LOW, IssueStatus.TODO);
+        createIssue("I0000001", "P0000001", "Parked", Priority.HIGH, "INACTIVE");
+        createIssue("I0000002", "P0000001", "Active", Priority.LOW, "TODO");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.LOW, results.get("P0000001").bubbledPriority);
@@ -487,8 +504,8 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testDoneBeatsInactive() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Done", Priority.NORMAL, IssueStatus.DONE);
-        createIssue("I0000002", "P0000001", "Parked", Priority.NORMAL, IssueStatus.INACTIVE);
+        createIssue("I0000001", "P0000001", "Done", Priority.NORMAL, "DONE");
+        createIssue("I0000002", "P0000001", "Parked", Priority.NORMAL, "INACTIVE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -503,10 +520,10 @@ class ProjectAnalysisServiceTest {
     @Transactional
     void testAllFourStatusesCounted() {
         createProject("P0000001", "P", null);
-        createIssue("I0000001", "P0000001", "Todo", Priority.NORMAL, IssueStatus.TODO);
-        createIssue("I0000002", "P0000001", "Doing", Priority.NORMAL, IssueStatus.DOING);
-        createIssue("I0000003", "P0000001", "Parked", Priority.NORMAL, IssueStatus.INACTIVE);
-        createIssue("I0000004", "P0000001", "Done", Priority.NORMAL, IssueStatus.DONE);
+        createIssue("I0000001", "P0000001", "Todo", Priority.NORMAL, "TODO");
+        createIssue("I0000002", "P0000001", "Doing", Priority.NORMAL, "DOING");
+        createIssue("I0000003", "P0000001", "Parked", Priority.NORMAL, "INACTIVE");
+        createIssue("I0000004", "P0000001", "Done", Priority.NORMAL, "DONE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         ProjectAnalysisResult r = results.get("P0000001");
@@ -524,7 +541,7 @@ class ProjectAnalysisServiceTest {
     void testInactiveBubblesUpFromSubproject() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000002", "Parked", Priority.HIGH, IssueStatus.INACTIVE);
+        createIssue("I0000001", "P0000002", "Parked", Priority.HIGH, "INACTIVE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.INACTIVE, results.get("P0000002").bubbledPriority);
@@ -540,8 +557,8 @@ class ProjectAnalysisServiceTest {
     void testInactiveUnderActiveProjectKeepsActiveBubble() {
         createProject("P0000001", "Parent", null);
         createProject("P0000002", "Child", "P0000001");
-        createIssue("I0000001", "P0000001", "Active", Priority.NORMAL, IssueStatus.DOING);
-        createIssue("I0000002", "P0000002", "Parked", Priority.HIGH, IssueStatus.INACTIVE);
+        createIssue("I0000001", "P0000001", "Active", Priority.NORMAL, "DOING");
+        createIssue("I0000002", "P0000002", "Parked", Priority.HIGH, "INACTIVE");
 
         Map<String, ProjectAnalysisResult> results = analysisService.analyzeAll();
         assertEquals(BubbledPriority.INACTIVE, results.get("P0000002").bubbledPriority);

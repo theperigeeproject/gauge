@@ -1,7 +1,6 @@
 package pl.perigee.gauge.service;
 
 import pl.perigee.gauge.domain.Issue;
-import pl.perigee.gauge.domain.IssueStatus;
 import pl.perigee.gauge.domain.Priority;
 import pl.perigee.gauge.domain.Project;
 import pl.perigee.gauge.domain.StatusLevel;
@@ -76,13 +75,11 @@ class StatusMigrationServiceTest {
     @Test
     @TestTransaction
     void tasklistsAndTasksMigrateToo() {
-        Tasklist tasklist = new Tasklist("TLMIG01", "ISSUE001", "t",
-            pl.perigee.gauge.domain.TasklistStatus.TODO, null);
+        Tasklist tasklist = new Tasklist("TLMIG01", "ISSUE001", "t", null, null);
         tasklist.status = "CANCELED"; // overwrite the constructor default with the legacy code
         em.persist(tasklist);
 
-        Task task = new Task("TASKMIG1", "TLMIG01", 0, "t", "d",
-            pl.perigee.gauge.domain.TaskStatus.TODO);
+        Task task = new Task("TASKMIG1", "TLMIG01", 0, "t", "d", null);
         task.status = "FAILED";
         em.persist(task);
         em.flush();
@@ -98,7 +95,8 @@ class StatusMigrationServiceTest {
     @Test
     @TestTransaction
     void projectsWithNoStatusGetOpened() {
-        Project project = Project.create("Legacy project", "d", null);
+        // No status on purpose: this is the pre-increment-3 row the migration exists for.
+        Project project = Project.create("Legacy project", "d", null, null);
         project.persist();
         String id = project.id;
         em.flush();
@@ -113,7 +111,7 @@ class StatusMigrationServiceTest {
     @Test
     @TestTransaction
     void aProjectThatAlreadyHasAStatusKeepsIt() {
-        Project project = Project.create("Already set", "d", null);
+        Project project = Project.create("Already set", "d", null, null);
         project.statusId = idOf(StatusLevel.PROJECT, "CLOSED");
         project.persist();
         String id = project.id;
@@ -160,7 +158,7 @@ class StatusMigrationServiceTest {
     @Test
     @TestTransaction
     void aRowWithNeitherIdNorCodeIsLeftAloneAndCountedAsRemaining() {
-        Issue issue = new Issue("MIG012", "PROJ0001", "t", "d", IssueStatus.TODO, Priority.NORMAL);
+        Issue issue = new Issue("MIG012", "PROJ0001", "t", "d", null, Priority.NORMAL);
         issue.status = null;
         issue.statusId = null;
         em.persist(issue);
@@ -245,7 +243,7 @@ class StatusMigrationServiceTest {
     }
 
     private Issue insertIssue(String id, String legacyCode) {
-        Issue issue = new Issue(id, "PROJ0001", "t", "d", IssueStatus.TODO, Priority.NORMAL);
+        Issue issue = new Issue(id, "PROJ0001", "t", "d", null, Priority.NORMAL);
         issue.status = legacyCode;
         issue.statusId = null;
         em.persist(issue);

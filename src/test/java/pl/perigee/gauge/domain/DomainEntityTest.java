@@ -14,7 +14,7 @@ class DomainEntityTest {
 
     @Test
     void testProjectCreate() {
-        Project p = Project.create("Test", "Description", null);
+        Project p = Project.create("Test", "Description", null, 1);
         assertNotNull(p.id());
         assertEquals(8, p.id().length());
         assertTrue(p.id().matches("[0-9A-F]{8}"));
@@ -26,7 +26,7 @@ class DomainEntityTest {
 
     @Test
     void testProjectCreateWithParent() {
-        Project p = Project.create("Child", "desc", "P0000001");
+        Project p = Project.create("Child", "desc", "P0000001", 1);
         assertEquals("P0000001", p.parentId());
     }
 
@@ -34,7 +34,7 @@ class DomainEntityTest {
 
     @Test
     void testProjectAccessors() {
-        Project p = new Project("P0000001", "Name", "Desc", "P0000002", "locked");
+        Project p = new Project("P0000001", "Name", "Desc", "P0000002", "locked", 1);
         assertEquals("P0000001", p.id());
         assertEquals("Name", p.name());
         assertEquals("Desc", p.description());
@@ -44,7 +44,7 @@ class DomainEntityTest {
 
     @Test
     void testProjectNullRemovalLockDefaultsToEmpty() {
-        Project p = new Project("P0000001", "Name", "Desc", null, null);
+        Project p = new Project("P0000001", "Name", "Desc", null, null, 1);
         assertEquals("", p.removalLock());
     }
 
@@ -55,24 +55,25 @@ class DomainEntityTest {
 
     @Test
     void testIssueCreate() {
-        Issue i = Issue.create("P0000001", "Title", "Description", Priority.HIGH);
+        Issue i = Issue.create("P0000001", "Title", "Description", Priority.HIGH, 7);
         assertNotNull(i.id());
         assertEquals(8, i.id().length());
         assertTrue(i.id().matches("[0-9A-F]{8}"));
         assertEquals("P0000001", i.projectId());
         assertEquals("Title", i.title());
         assertEquals("Description", i.description());
-        assertEquals(IssueStatus.TODO, i.status());
+        assertEquals(7, i.statusId, "the caller supplies the status id; the entity stores it verbatim");
         assertEquals(Priority.HIGH, i.priority());
     }
 
     // ---- 4: Issue — status() and priority() return correct enums ----
 
     @Test
-    void testIssueStatusAndPriorityEnums() {
-        Issue i = new Issue("I0000001", "P0000001", "T", "D", IssueStatus.DOING, Priority.LOW);
-        assertEquals(IssueStatus.DOING, i.status());
+    void testIssueStatusIdAndPriority() {
+        Issue i = new Issue("I0000001", "P0000001", "T", "D", 3, Priority.LOW);
+        assertEquals(3, i.statusId);
         assertEquals(Priority.LOW, i.priority());
+        assertNull(i.legacyStatusCode(), "a new row never carries a legacy status code");
     }
 
     // ---- 5: Issue — JSON roundtrip ----
@@ -82,35 +83,36 @@ class DomainEntityTest {
 
     @Test
     void testTasklistCreate() {
-        Tasklist tl = Tasklist.create("I0000001", "Title", "T0000001");
+        Tasklist tl = Tasklist.create("I0000001", "Title", "T0000001", 7);
         assertNotNull(tl.id());
         assertEquals(8, tl.id().length());
         assertTrue(tl.id().matches("[0-9A-F]{8}"));
         assertEquals("I0000001", tl.issueId());
         assertEquals("Title", tl.title());
-        assertEquals(TasklistStatus.TODO, tl.status());
+        assertEquals(7, tl.statusId);
         assertEquals("T0000001", tl.decomposesTaskId());
     }
 
     @Test
     void testTasklistCreateNullDecomposesTaskId() {
-        Tasklist tl = Tasklist.create("I0000001", "Title", null);
+        Tasklist tl = Tasklist.create("I0000001", "Title", null, 7);
         assertNull(tl.decomposesTaskId());
     }
 
     // ---- 7: Tasklist — status() and decomposesTaskId() ----
 
     @Test
-    void testTasklistStatusEnum() {
-        Tasklist tl = new Tasklist("TL000001", "I0000001", "T", TasklistStatus.DOING, null);
-        assertEquals(TasklistStatus.DOING, tl.status());
+    void testTasklistStatusId() {
+        Tasklist tl = new Tasklist("TL000001", "I0000001", "T", 3, null);
+        assertEquals(3, tl.statusId);
+        assertNull(tl.legacyStatusCode());
     }
 
     // ---- 8: Task.create — hex-8 ID, TODO status, correct fields ----
 
     @Test
     void testTaskCreate() {
-        Task t = Task.create("TL000001", 3, "Title", "Description");
+        Task t = Task.create("TL000001", 3, "Title", "Description", 7);
         assertNotNull(t.id());
         assertEquals(8, t.id().length());
         assertTrue(t.id().matches("[0-9A-F]{8}"));
@@ -118,16 +120,17 @@ class DomainEntityTest {
         assertEquals(3, t.ordinal());
         assertEquals("Title", t.title());
         assertEquals("Description", t.description());
-        assertEquals(TaskStatus.TODO, t.status());
+        assertEquals(7, t.statusId);
     }
 
     // ---- 9: Task — status() and ordinal() ----
 
     @Test
-    void testTaskStatusEnum() {
-        Task t = new Task("T0000001", "TL000001", 0, "T", "D", TaskStatus.FAILED);
-        assertEquals(TaskStatus.FAILED, t.status());
+    void testTaskStatusId() {
+        Task t = new Task("T0000001", "TL000001", 0, "T", "D", 4);
+        assertEquals(4, t.statusId);
         assertEquals(0, t.ordinal());
+        assertNull(t.legacyStatusCode());
     }
 
     // ---- 10: User.create — UUID ID, bcrypt password, correct fields ----
@@ -226,39 +229,11 @@ class DomainEntityTest {
     // ---- 14: All enums — values and valueOf ----
 
     @Test
-    void testIssueStatusEnum() {
-        assertEquals(4, IssueStatus.values().length);
-        assertEquals(IssueStatus.TODO, IssueStatus.valueOf("TODO"));
-        assertEquals(IssueStatus.DOING, IssueStatus.valueOf("DOING"));
-        assertEquals(IssueStatus.INACTIVE, IssueStatus.valueOf("INACTIVE"));
-        assertEquals(IssueStatus.DONE, IssueStatus.valueOf("DONE"));
-    }
-
-    @Test
     void testPriorityEnum() {
         assertEquals(3, Priority.values().length);
         assertEquals(Priority.LOW, Priority.valueOf("LOW"));
         assertEquals(Priority.NORMAL, Priority.valueOf("NORMAL"));
         assertEquals(Priority.HIGH, Priority.valueOf("HIGH"));
-    }
-
-    @Test
-    void testTaskStatusEnumValues() {
-        assertEquals(5, TaskStatus.values().length);
-        assertEquals(TaskStatus.TODO, TaskStatus.valueOf("TODO"));
-        assertEquals(TaskStatus.DOING, TaskStatus.valueOf("DOING"));
-        assertEquals(TaskStatus.DONE, TaskStatus.valueOf("DONE"));
-        assertEquals(TaskStatus.FAILED, TaskStatus.valueOf("FAILED"));
-        assertEquals(TaskStatus.CANCELED, TaskStatus.valueOf("CANCELED"));
-    }
-
-    @Test
-    void testTasklistStatusEnumValues() {
-        assertEquals(4, TasklistStatus.values().length);
-        assertEquals(TasklistStatus.TODO, TasklistStatus.valueOf("TODO"));
-        assertEquals(TasklistStatus.DOING, TasklistStatus.valueOf("DOING"));
-        assertEquals(TasklistStatus.DONE, TasklistStatus.valueOf("DONE"));
-        assertEquals(TasklistStatus.CANCELED, TasklistStatus.valueOf("CANCELED"));
     }
 
     @Test
@@ -289,8 +264,8 @@ class DomainEntityTest {
     @Test
     void testEntityFactoryMethodsUseIdProvider() {
         // Multiple creates should produce different IDs from the same provider
-        Project p1 = Project.create("P1", "desc", null);
-        Project p2 = Project.create("P2", "desc", null);
+        Project p1 = Project.create("P1", "desc", null, 1);
+        Project p2 = Project.create("P2", "desc", null, 1);
         assertNotEquals(p1.id(), p2.id());
     }
 }

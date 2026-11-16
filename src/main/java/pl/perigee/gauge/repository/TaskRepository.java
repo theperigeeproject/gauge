@@ -18,7 +18,7 @@ public class TaskRepository {
             managed.ordinal = task.ordinal;
             managed.title = task.title;
             managed.description = task.description;
-            managed.status = task.status;
+            managed.statusId = task.statusId;
             managed.persist();
             return managed;
         }

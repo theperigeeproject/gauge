@@ -6,6 +6,7 @@ import pl.perigee.gauge.domain.Priority;
 import pl.perigee.gauge.domain.StatusBase;
 import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.ValidationException;
+import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.TestTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -30,6 +31,9 @@ class StatusServiceTest {
 
     @Inject
     StatusReferenceScanner scanner;
+
+    @Inject
+    StatusIds statusIds;
 
     // ── Caches ──────────────────────────────────────────────────────
 
@@ -247,7 +251,7 @@ class StatusServiceTest {
     @Test
     @TestTransaction
     void noPolicyButReferencedRowsIsAConflict() {
-        Issue issue = Issue.create("PROJ0000", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0000", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
 
         // The issue carries the legacy code 'TODO', which is what entities reference today.
@@ -263,7 +267,7 @@ class StatusServiceTest {
     @Test
     @TestTransaction
     void preventPolicyRefusesEvenWithManyReferences() {
-        Issue issue = Issue.create("PROJ0003", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0003", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
 
         ConflictException e = assertThrows(ConflictException.class,
@@ -276,7 +280,7 @@ class StatusServiceTest {
     @Test
     @TestTransaction
     void migratePolicyRewritesRowsThenDeletesTheStatus() {
-        Issue issue = Issue.create("PROJ0001", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0001", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
         String issueId = issue.id;
 
@@ -286,13 +290,13 @@ class StatusServiceTest {
         // Must look the issue up by its OWN id — Issue.create() takes a project id.
         Issue reloaded = Issue.findById(issueId);
         assertNotNull(reloaded, "the row must survive a migration");
-        assertEquals("DOING", reloaded.status, "the referencing row was migrated");
+        assertEquals(statusIds.issue("DOING"), reloaded.statusId, "the referencing row was migrated");
     }
 
     @Test
     @TestTransaction
     void removePolicyCascadeDeletesRows() {
-        Issue issue = Issue.create("PROJ0002", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0002", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
         String issueId = issue.id;
 
@@ -305,7 +309,7 @@ class StatusServiceTest {
     @Test
     @TestTransaction
     void migrateWithoutATargetIsRejected() {
-        Issue issue = Issue.create("PROJ0004", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0004", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
 
         ValidationException e = assertThrows(ValidationException.class,
@@ -316,7 +320,7 @@ class StatusServiceTest {
     @Test
     @TestTransaction
     void migrateTargetMustExistOnTheSameLevel() {
-        Issue issue = Issue.create("PROJ0005", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0005", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
 
         assertThrows(ValidationException.class, () ->
@@ -326,7 +330,7 @@ class StatusServiceTest {
     @Test
     @TestTransaction
     void migrateTargetCannotBeTheStatusBeingRemoved() {
-        Issue issue = Issue.create("PROJ0006", "t", "d", Priority.NORMAL);
+        Issue issue = Issue.create("PROJ0006", "t", "d", Priority.NORMAL, statusIds.issue("TODO"));
         issue.persist();
 
         ValidationException e = assertThrows(ValidationException.class, () ->
