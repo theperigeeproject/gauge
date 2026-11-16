@@ -1,5 +1,10 @@
 # FR 4: Recursive Project Analysis with Bubbled Priority
 
+## Status
+Partially superseded by **ADR 20**. The field table below is gone — counts are keyed by status
+code once statuses are configurable. The bubbled-priority rules are unchanged in meaning and are
+now expressed through `progressLevel` + `attitudeType` instead of status names.
+
 ## Scope
 `GET /api/projects/analysis` returns computed stats for every project, recursively aggregating across subproject trees.
 

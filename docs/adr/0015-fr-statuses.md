@@ -1,5 +1,10 @@
 # FR 2: Status Lifecycles for Entities
 
+## Status
+Partially superseded by **ADR 20**. The per-level status sets below survive as **seed rows**, and
+the ordering rules survive as `precedenceValue`. What no longer holds: that statuses are enums.
+They are rows in four tables now, named and ordered by data. Read ADR 20 for the schema.
+
 ## Scope
 Each entity level has an appropriate status enum reflecting its role in the model.
 
