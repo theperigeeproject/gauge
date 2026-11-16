@@ -6,6 +6,10 @@ Accepted
 Issue 0000186F. Tasklist 00001A5A. Supersedes ADR 15 for the storage model; ADR 15's
 semantics survive as seed data, not as enums.
 
+Revised before first implementation: status, progress-level and attitude IDs are now **internal
+ints outside `IdProvider`** (§2). Earlier drafts gave them hex-8 IDs, which was wrong for reasons
+recorded there.
+
 ## Context
 
 Statuses are enums today: `IssueStatus`, `TasklistStatus`, `TaskStatus` in
@@ -36,7 +40,7 @@ Every status row carries exactly:
 
 | Column | Type | Meaning |
 |---|---|---|
-| `id` | `varchar(36)`, hex-8 via `IdProvider` | the referent — what entities store |
+| `id` | `int`, DB identity — **internal only** | the referent — what entities store (§2) |
 | `code` | `varchar(40)` | the human name. Unique per table. This **is** the label |
 | `precedenceValue` | `int` | display / sort order, ascending. Unique per table |
 | `color` | `varchar(20)` | display colour |
@@ -50,7 +54,7 @@ replaced by explicit referential handling on removal (§10).
 There is no `label` column distinct from `code`. Code is what the surface speaks (§4), so a
 second human name would be a second naming rule — the failure ADR 18 already documented once.
 
-### 2. Reference by ID, never by code
+### 2. Reference by an internal int ID, never by code — and never across the surface
 
 Entities store the status **id**. Renaming a status is therefore free: no row rewriting, no
 in-use rename machinery, no chance of a rename racing a write.
@@ -58,8 +62,38 @@ in-use rename machinery, no chance of a rename racing a write.
 `code` keeps no referential weight. It is a display slug and a seed identifier. Nothing in the
 read or write path may join on it.
 
-Consequence: a status table's `code` can be renamed at any time, and the only thing that changes
-is what the API returns.
+**Status, progress-level and attitude IDs are internal.** They exist between the persistence layer
+and the status service, and nowhere else. They are therefore:
+
+- **Plain auto-increment ints**, not hex-8 via `IdProvider` (ADR 5). ADR 5's format exists so that
+  a human or an LLM can read and quote an ID reliably in a context window. These IDs are never
+  read or quoted by anyone, so they earn nothing from it.
+- **Outside `IdProvider` entirely** — not in its startup scan, never affecting the hex-8 counter.
+  Mixing internal surrogate keys into a globally sequential business-ID counter would couple two
+  concerns that have no reason to know about each other.
+- **Absent from every external surface**: no API field, no UI element, no URL segment, no query
+  parameter, no error message body. A caller never learns a status's id, so a caller can never
+  depend on one. The wire identity of a status is its **code**.
+
+**The service layer is agnostic to the ID's type.** Its contract speaks codes; ints do not appear
+in a method signature that a resource, a template or a test outside the status package can see.
+Swapping the surrogate (int to long, int to a composite, DB-generated to assigned) is an internal
+change with no caller impact. This is the actual reason to keep them out of the contract — not
+tidiness.
+
+Consequences:
+- A status's `code` can be renamed at any time, and the only thing that changes is what the API
+  returns.
+- Operations that must name a status — status removal's `migrate` target (§10) — name it by
+  **code**, resolved inside the status service.
+- No DTO carries a status id. The surface DTO carries the code (§4); the persistence entity carries
+  the int. They are not the same shape and must not be conflated.
+
+The lookup tables are the deliberate exception to "reference by id". `progress_levels` and
+`attitude_types` are **fixed**, so their names are stable by definition and a status row references
+them by `name` string (§3). Those tables carry an int id only because every table needs a primary
+key; nothing references it. Statuses are the other case: user-editable, so they are referenced by
+surrogate id and their codes are free to change.
 
 ### 3. Two fixed lookup tables, no surface API
 
@@ -95,8 +129,9 @@ fallback.
 
 Two DTOs, deliberately:
 
-- **Persistence entity** (`Issue`, …) — field `status` holds the status **id**.
-- **Surface DTO** (`IssueDto`, …) — field `status` holds the status **code**.
+- **Persistence entity** (`Issue`, …) — field `status` is an `Integer` holding the status **id**
+  (internal, §2). Column type `int`, nullable until migrated (§5).
+- **Surface DTO** (`IssueDto`, …) — field `status` is a `String` holding the status **code**.
 
 Translation between them happens in the status service and nowhere else. A resource or a template
 that resolves a status by hand is a bug: it is the second naming rule that ADR 18 warned about,
@@ -110,8 +145,9 @@ Null status on input is rejected. The column may be null (see §5), the API may 
 
 ### 5. Migration of existing rows
 
-Each entity gains a nullable `status` column (the id) **alongside** the existing `status` code
-value, which is renamed `statusCode` and becomes legacy:
+Each entity gains a nullable `status` **int** column (the id) **alongside** the existing `status`
+code value, which is renamed to `statusCode` and becomes legacy. Two separate columns, not a
+rename-in-place — the id column must be able to start empty on an existing database:
 
 - `statusCode` is nullable and is read **only** by the migration. Nothing else touches it.
 - `status` is nullable in the schema — required, or the first startup after deploy cannot boot —
@@ -206,10 +242,10 @@ Every removal is preceded by a full scan of the referencing entity table, then:
 |---|---|
 | `prevent` | refuse if at least one row references the status → `409 STATUS_IN_USE` |
 | `remove` | cascade-delete the referencing rows, then the status |
-| `migrate` | rewrite referencing rows to the supplied target status id, then delete |
+| `migrate` | rewrite referencing rows to the supplied target status, then delete |
 
-`migrate` requires the target id up front, and the target must exist in the **same level table**
-and not be the status being removed.
+`migrate` requires the target up front, **named by code** (§2 — the wire never carries status ids),
+and the target must exist in the **same level table** and not be the status being removed.
 
 No policy supplied + references found → `409`. No policy + zero references → the delete proceeds,
 because there is nothing to decide.
@@ -286,6 +322,13 @@ rewrites an existing row's editable properties.
   is the "almost no place is untouched" part.
 - **Two DTOs per entity.** The surface DTO is not the entity. Jackson no longer serialises an
   entity directly for status-bearing types.
+- **A second, quieter identity model exists.** Business entities keep hex-8 `IdProvider` ids
+  (ADR 5); statuses and the two lookup tables use internal ints that never surface. ADR 5 has been
+  given a scope note recording the split. The rule to remember: if an id can be read by a caller, it
+  is hex-8; if it cannot, it is an int and it stays inside.
+- **`IdProvider`'s startup scan is unchanged.** An earlier draft of this ADR would have added the
+  four status tables to the scan. With int ids that is unnecessary — the scan still covers exactly
+  the four business tables, and no counter interaction exists.
 - **Rename is free, deletion is not.** Renaming a status touches one row. Removing one can touch
   every row in a table, hence §10.
 - **Startup can now refuse to boot.** An unmatched `statusCode` is fatal (§5). Accepted: it means

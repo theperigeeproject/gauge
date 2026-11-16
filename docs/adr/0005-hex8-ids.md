@@ -9,6 +9,13 @@ Gauge is used by both a human and an LLM daemon (ADR 3). The LLM reads, writes, 
 ## Decision
 Business entities (projects, issues, tasklists, tasks) use **globally unique, sequential 8-digit hexadecimal IDs** (e.g., `00000001`, `00000562`). Users and API keys remain on UUIDs.
 
+**Scope note (ADR 20 revision).** This ADR governs identity that **crosses the surface** — an ID a
+human or an LLM reads, quotes and passes back. Status rows and the two fixed lookup tables
+(`progress_levels`, `attitude_types`) are a different case: their IDs never leave the backend and
+the service layer, so they use **plain auto-increment ints** and are deliberately **outside
+`IdProvider`**. They are not scanned on startup and they never influence the hex-8 counter. See
+ADR 20 §2.
+
 ## Rationale
 - **8 hex digits** provide optimal semantic distance for LLMs: they look obviously like identifiers, LLMs are trained on distinguishing details in such values, and they're short enough for LLMs to operate on with ease
 - UUIDs are too long — they waste context window and are harder for LLMs to distinguish at a glance
