@@ -177,8 +177,8 @@ Projects are the special case: they have no status today at all, so there is no 
 Existing project rows get the seeded `OPENED` status. Nulls are tolerated in the column; the API
 rejects them.
 
-**Schema is created by Hibernate: the packaged `database.generation` becomes `update`.** The five
-new tables (`status` tables plus both lookups) are declared only by their entities and get created on
+**Schema is created by Hibernate: the packaged `database.generation` becomes `update`.** The six
+new tables (four `status` tables plus both lookups) are declared only by their entities and get created on
 first boot, exactly like every other table in the application. No `CREATE TABLE` bean, no hand-written
 DDL, one description of the schema.
 
@@ -230,16 +230,16 @@ behaviour exactly.
 
 | Property | Default | Effect |
 |---|---|---|
-| `enable.extended.progress.levels` | `false` | when false, statuses at progress level `NASCENT` or `FINALIZED` are not accepted on status create/patch. Reads unaffected |
-| `enable.archive` | `true` | when false, statuses with attitude `ARCHIVE` cannot be retrieved, created or patched |
-| `enable.trash` | `false` | as above, for `TRASH` |
+| `gauge.status.extended-progress-levels` | `false` | when false, statuses at progress level `NASCENT` or `FINALIZED` are not accepted on status create/patch. Reads unaffected |
+| `gauge.status.archive-enabled` | `true` | when false, statuses with attitude `ARCHIVE` cannot be retrieved, created or patched |
+| `gauge.status.trash-enabled` | `false` | as above, for `TRASH` |
 
-A disabled flag makes those statuses **unusable for authoring**. It does not retroactively hide
-entity rows; that is what §8 does, and it does it unconditionally.
+A disabled flag makes those statuses **unavailable** (§9) — unusable for authoring and absent from
+the available cache. It does not retroactively hide entity rows; that is what §8 does, and it does
+it unconditionally.
 
-Property strings above are as decided. Whether they take the `gauge.` prefix follows the existing
-namespace convention (`gauge.issue.description.allow-long`, ADR 11 family) — settle when the
-config class is written, not here.
+The property names are final: they carry the `gauge.` prefix and the `status.` group, following the
+existing namespace convention (`gauge.issue.description.allow-long`, `gauge.ids.start-offset`).
 
 ### 8. ARCHIVE and TRASH are invisible to reads
 
@@ -256,15 +256,28 @@ rows is a trap, so `enable.archive` defaults **true** (nothing is blocked today)
 
 ### 9. Status cache
 
-At startup, per level, build **two** caches:
+Per level, build **two** caches:
 
 - **all** — every status row
-- **available** — the subset usable for authoring and display: flag-enabled (§7), and attitude not
-  `ARCHIVE`/`TRASH`
+- **available** — the **flag-enabled** subset (§7): `ARCHIVE` only while `archive-enabled`,
+  `TRASH` only while `trash-enabled`, `NASCENT`/`FINALIZED` only while
+  `extended-progress-levels`.
 
-Both are rebuilt **from scratch** on every status create, update and delete. No incremental
-patching, no invalidation logic — the sets are tiny and a rebuild is trivially correct. A stale
-cache is the failure mode worth spending nothing to avoid.
+`available` is defined by the flags **alone**, and that is deliberate. §7 says a flag "allows
+*using* (retrieving, creating, patching)" statuses of that attitude — so excluding `ARCHIVE` and
+`TRASH` from `available` unconditionally would make both flags pointless: an admin could never
+create or select what the flag exists to enable. Keeping archived and trashed **entity rows** out
+of listings is a different question, answered in §8.
+
+Both caches are rebuilt **from scratch** on every status create, update and delete. No incremental
+patching, no invalidation logic — the sets are tiny and a rebuild is trivially correct.
+
+**A rebuild inside a transaction is not enough on its own.** The caches live on an
+application-scoped bean and therefore survive a rollback, so a failed transaction would leave them
+describing rows that no longer exist. Every write therefore also registers a transaction
+synchronization that **drops** both caches if the transaction does not commit; the next read
+rebuilds from the database. Rebuilding eagerly keeps same-transaction reads correct; invalidating
+on rollback keeps everything after it honest.
 
 ### 10. Removal requires an explicit orphan policy
 
