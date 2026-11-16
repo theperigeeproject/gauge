@@ -6,8 +6,8 @@ Accepted
 Issue 0000186F. Tasklist 00001A5A. Supersedes ADR 15 for the storage model; ADR 15's
 semantics survive as seed data, not as enums.
 
-Revised five times before completion. All five revisions are recorded rather than edited away,
-because each one is a decision someone will otherwise re-propose:
+Revised six times. The first five came before completion; all six are recorded rather than edited
+away, because each one is a decision someone will otherwise re-propose:
 
 1. **IDs** — status, progress-level and attitude ids became **internal ints outside `IdProvider`**
    (§2). Earlier drafts gave them hex-8 IDs, which was wrong for reasons recorded there.
@@ -32,6 +32,14 @@ because each one is a decision someone will otherwise re-propose:
      only the agent on one machine could repeat, which is not a gate.
    The enabling piece is §3's `MIGRATION` attitude: the two axes already existed to say "treat rows
    carrying this status differently", and "this row has not been migrated yet" is exactly that.
+6. **The enums were deleted in increment 4, and the surface changed shape with it** (§14). Two
+   things this ADR could only describe in the future tense are now facts: the surface speaks codes
+   through dedicated view records, and the legacy varchar is never written again. One consequence
+   had to be *found*, not designed: `CANCELED` is seeded at `FINALIZED`, `FINALIZED` is
+   flag-gated (§7), and authoring a status is now validated — so `CANCELED` became unsettable
+   without `gauge.status.extended-progress-levels=true`, which it was not before. That is this
+   ADR being consistent, and the seed choice being questionable; it is filed as issue 00001A9E for
+   the owner rather than quietly changed here.
 
 
 ## Context
@@ -430,6 +438,34 @@ which the seeds make `OPENED` for projects and `TODO` for everything else.
 Seeding is idempotent by `code` per table, uses `@Startup` + `@PostConstruct` +
 `QuarkusTransaction.run` (not `@Observes StartupEvent`, per the 0000055D lesson), and never
 rewrites an existing row's editable properties.
+
+### 14. The switchover, as built (increment 4)
+
+Recorded because §4 said "two DTOs, deliberately" without saying where they live or what the
+temporary shape of everything else would be.
+
+- **The surface records are `resource/dto`**: `IssueView`, `TasklistView`, `TaskView`,
+  `ProjectView`, plus one `ViewMapper` that injects the status service. Field names and order are
+  unchanged from the old entity JSON, so clients and the templates' client-side JS need no change;
+  what disappeared is `statusId`, which used to leak because entities were serialized raw.
+- **Nothing serializes an entity any more.** Resources return views. The entities keep their public
+  fields because Panache wants them, not because they are a wire shape.
+- **The legacy varchar is dead data.** Factories take a status id; services resolve a caller's code
+  through `resolveForWrite`. `StatusBearing.legacyStatusCode()` remains read-only and is read by the
+  migration alone.
+- **A null `statusId` still renders as `NEEDS_MIGRATION`,** and now it also *filters* that way: the
+  filter matches resolved status rows by identity, so `?status=NEEDS_MIGRATION` returns the
+  unmigrated rows instead of nothing. Comparing raw codes would have hidden them — they are the
+  rows the filter names.
+- **Ordering is `precedenceValue`,** never a code literal. `IssueService.statusOrder` is gone.
+- **Analysis keeps its four legacy fields until increment 5** (§12). Its buckets are derived from
+  the axes and the progress level, with one deliberate catch-all: an ACTIVE status whose progress
+  level is neither `CREATED` nor terminal counts as "doing". That is what keeps `NEEDS_MIGRATION`
+  rows visible and bubbling instead of vanishing from the tree. §12 replaces the four fields with a
+  per-code map, at which point the catch-all disappears by construction.
+- **`StatusReferenceScanner` counts all four levels by id.** It had to flip in the same change as
+  the write path: counting by a column that is no longer written would have made every new row
+  invisible to removal policies — silent data loss under `remove`, a silent no-op under `prevent`.
 
 ## Consequences
 

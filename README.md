@@ -66,7 +66,7 @@ All settings live in `src/main/resources/application.properties`. Runtime overri
 | `quarkus.http.port` | HTTP listen port |
 | `quarkus.hibernate-orm.database.generation` | Hibernate DDL value |
 
-If you want the app to listen on all interfaces, set host to `0.0.0.0`. The packaged default DDL is `none`, which will halt startup against an empty database — `update` is the safest choice for a local run, and `dev.application.properties.sample` already sets it.
+If you want the app to listen on all interfaces, set host to `0.0.0.0`. The packaged DDL is `update` — Hibernate creates missing tables and adds missing columns, which is what lets the status tables appear on first boot without a bean doing it. It is additive only: it never renames, narrows or drops anything.
 
 ### ID start offset
 
@@ -145,13 +145,20 @@ Please note that a task can simply state it refers to a project, creating a sema
 
 ### Statuses
 
+Statuses are **data**, not a compiled enum: four tables (`project_statuses`, `issue_statuses`, `tasklist_statuses`, `task_statuses`) seeded on first boot and editable by an admin through `/api/admin/statuses/{level}`. The surface speaks a status **code**; the id behind it never leaves the server. Design of record: `docs/adr/0020-reified-configurable-statuses.md`.
+
+Seeded statuses:
+
 | Level | Statuses |
 |---|---|
+| Project | `OPENED`, `CLOSED` |
 | Issue | `TODO`, `DOING`, `DONE`, `INACTIVE` |
 | Tasklist | `TODO`, `DOING`, `DONE`, `CANCELED` |
 | Task | `TODO`, `DOING`, `DONE`, `FAILED`, `CANCELED` |
 
-Every entity starts in `TODO`. Transitions are unrestricted — there is no state machine.
+Every level also carries exactly one `NEEDS_MIGRATION` status: it is what a row whose status was never migrated reads as, and it cannot be removed. A newly created entity gets the lowest-precedence *available* status of its level — `OPENED` for projects, `TODO` for everything else. Transitions are unrestricted — there is no state machine. Codes are matched case-insensitively on input and echoed as stored; an unknown code is a `400 INVALID_STATUS` naming the valid set.
+
+Three properties gate **authoring** a status (never reading existing rows): `gauge.status.extended-progress-levels` (default `false`) gates the `NASCENT`/`FINALIZED` progress levels; `gauge.status.archive-enabled` (default `true`) and `gauge.status.trash-enabled` (default `false`) gate the `ARCHIVE`/`TRASH` attitudes. Note that a seeded `CANCELED` sits at `FINALIZED`, so setting one today needs the extended-levels switch — tracked as issue 00001A9E.
 
 `INACTIVE` (issues only) means **parked**: not being worked on, and not finished. It is the *least important* status — it ranks below `DONE` and never displaces it. Parked issues never bubble a priority (a parked `HIGH` issue does not make its project `HIGH`), and `INACTIVE` surfaces in project analysis only when nothing is active and nothing is done. Ordering is `TODO, DOING, DONE, INACTIVE` everywhere — active work first, finished next, parked last — and parked issues are shown by default in the project issue list (unlike `DONE`).
 
