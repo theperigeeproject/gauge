@@ -6,8 +6,8 @@ Accepted
 Issue 0000186F. Tasklist 00001A5A. Supersedes ADR 15 for the storage model; ADR 15's
 semantics survive as seed data, not as enums.
 
-Revised three times before first implementation. All three revisions are recorded rather than
-edited away, because each one is a decision someone will otherwise re-propose:
+Revised four times before completion. All four revisions are recorded rather than edited away,
+because each one is a decision someone will otherwise re-propose:
 
 1. **IDs** — status, progress-level and attitude ids became **internal ints outside `IdProvider`**
    (§2). Earlier drafts gave them hex-8 IDs, which was wrong for reasons recorded there.
@@ -17,6 +17,9 @@ edited away, because each one is a decision someone will otherwise re-propose:
 3. **Entity naming** — the status entities are **`…StatusDef`**, not plain `…Status` (Consequences).
    An earlier draft claimed plain names were worth a sub-package; the ambiguity they create across
    three increments is worse than a suffix.
+4. **Migration column** — entities gain **`statusId`**, added alongside an untouched legacy `status`
+   varchar. An earlier draft renamed the legacy column to `statusCode`; `update` cannot rename, and
+   the ordered `ALTER` that would be needed is a startup-ordering hazard (§5). Owner's call.
 
 ## Context
 
@@ -137,9 +140,15 @@ fallback.
 
 Two DTOs, deliberately:
 
-- **Persistence entity** (`Issue`, …) — field `status` is an `Integer` holding the status **id**
-  (internal, §2). Column type `int`, nullable until migrated (§5).
+- **Persistence entity** (`Issue`, …) — field **`statusId`** is an `Integer` holding the status
+  **id** (internal, §2). Column type `int`, nullable until migrated (§5). Not named `status`: the
+  legacy varchar column still owns that name on an upgraded database (§5), so the new column takes
+  a different one. `statusId` also states plainly that it holds an id.
 - **Surface DTO** (`IssueDto`, …) — field `status` is a `String` holding the status **code**.
+
+The two names are deliberately different, and that difference is the whole point: seeing `statusId`
+in a persistence layer and `status` on the wire is a reminder of which side of the translation you
+are on. Conflating them is the bug §4 exists to prevent.
 
 Translation between them happens in the status service and nowhere else. A resource or a template
 that resolves a status by hand is a bug: it is the second naming rule that ADR 18 warned about,
@@ -153,16 +162,30 @@ Null status on input is rejected. The column may be null (see §5), the API may 
 
 ### 5. Migration of existing rows
 
-Each entity gains a nullable `status` **int** column (the id) **alongside** the existing `status`
-code value, which is renamed to `statusCode` and becomes legacy. Two separate columns, not a
-rename-in-place — the id column must be able to start empty on an existing database:
+Each entity gains a nullable **`statusId` int** column. **The legacy varchar column keeps its
+existing name and its existing rows, untouched** — `issues.status`, `tasklists.status`,
+`tasks.status`. It is not renamed, not dropped, and not written to again; after the migration it is
+dead data that only happens to still be there. Projects have no such column.
 
-- `statusCode` is nullable and is read **only** by the migration. Nothing else touches it.
-- `status` is nullable in the schema — required, or the first startup after deploy cannot boot —
-  but the API never accepts null.
+Why not rename it, as an earlier draft of this section said? Because `update` (§5, below) **cannot
+rename a column**, so a rename would need an `ALTER` in a startup bean, and that `ALTER` would have
+to run *before* Hibernate inspects the schema — otherwise Hibernate sees a column already called
+`status`, concludes it exists, and the new int column is never added. That ordering is not a
+documented guarantee, and a schema half-migrated in production is the single worst outcome this
+increment can produce. Adding a differently-named column needs no ordering at all: `update` adds
+it whenever it likes. The cost is one muddier column name; the alternative is a load-bearing
+dependency on startup ordering. Not a close call.
 
-At startup, for every entity row with `status IS NULL` and a non-null `statusCode`, the migration
-resolves `statusCode` → the seeded status's id for that level and writes it.
+Consequences of that choice, both accepted:
+
+- **Two `status`-ish columns coexist on an upgraded database** — `status` (varchar, legacy, ignored)
+  and `statusId` (int, the referent). Naming them differently is the point: a reader can tell at a
+  glance which one they are holding.
+- **`statusId` is nullable in the schema** — required, or the first startup after deploy cannot
+  boot — but the API never accepts null (§4).
+
+At startup, for every entity row with `statusId IS NULL` and a non-null legacy `status`, the
+migration resolves the legacy code → the seeded status id for that level and writes it.
 
 **An unmatched code is an exception, and startup aborts.** Not a warning, not a parking
 placeholder. The application seeds its own defaults, so every code in a database that was running
@@ -173,9 +196,9 @@ and the row count.
 This makes the migration a hard gate on boot, which is why the migration is to be tested
 exhaustively — every level, every seeded code, mixed null/non-null, and the failure path.
 
-Projects are the special case: they have no status today at all, so there is no code to migrate.
-Existing project rows get the seeded `OPENED` status. Nulls are tolerated in the column; the API
-rejects them.
+Projects are the special case: they have no legacy status column at all, so there is no code to
+migrate. Existing project rows get the seeded `OPENED` status. Nulls are tolerated in the column;
+the API rejects them.
 
 **Schema is created by Hibernate: the packaged `database.generation` becomes `update`.** The six
 new tables (four `status` tables plus both lookups) are declared only by their entities and get created on
@@ -194,11 +217,9 @@ Consequences that must not be lost:
 
 - `update` is **additive, never destructive and never renaming**. It creates missing tables and adds
   missing columns. It will not narrow a column, drop one, or rename one.
-- Therefore the §5 migration still needs explicit SQL for the one thing `update` cannot do: the old
-  `status` code column has to become `statusCode` before the new `status` int column can occupy that
-  name. `IssueDescriptionColumnStartup` is the precedent for raw DDL in a startup bean. The exact
-  ordering against Hibernate's own schema update has to be settled empirically in that increment —
-  not assumed.
+- **That limitation is exactly why the new column is called `statusId`** and not `status` (§5): no
+  rename is needed, so no `ALTER` is needed, so there is no startup-ordering dependency. This is the
+  one place where `update`'s weakness shaped the schema, and it did so in the safe direction.
 - Test isolation is unaffected: `src/test/resources/application.properties` sets
   `drop-and-create` and outranks the packaged file, so tests keep recreating the schema.
 
@@ -377,7 +398,7 @@ rewrites an existing row's editable properties.
   the four business tables, and no counter interaction exists.
 - **Rename is free, deletion is not.** Renaming a status touches one row. Removing one can touch
   every row in a table, hence §10.
-- **Startup can refuse to boot on unmatched data.** An unmatched `statusCode` is fatal (§5):
+- **Startup can refuse to boot on unmatched data.** An unmatched legacy status code is fatal (§5):
   continuing would mean silently picking a status the code does not actually understand. A missing
   table is *not* fatal, because Hibernate creates it.
 - **Status entities carry a `Def` suffix: `IssueStatusDef`, `ProjectStatusDef`, `TasklistStatusDef`,
