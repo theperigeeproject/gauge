@@ -115,11 +115,26 @@ class StatusServiceTest {
 
     @Test
     @TestTransaction
-    void extendedProgressLevelsAreRejectedBecauseEnableExtendedDefaultsFalse() {
+    void nascentProgressLevelIsRejectedBecauseEnableExtendedDefaultsFalse() {
         ValidationException e = assertThrows(ValidationException.class, () ->
             service.create(StatusLevel.ISSUE,
                 new StatusService.StatusSpec("NASCENT_ISSUE", 7, "#000", "NASCENT", "REGULAR")));
         assertEquals("PROGRESS_LEVEL_DISABLED", e.error());
+    }
+
+    @Test
+    @TestTransaction
+    void finalizedIsAuthorableBecauseASeededStatusLivesThere() {
+        // ADR 0020 revision 7. CANCELED is seeded at FINALIZED on both tasklist and task, so gating
+        // FINALIZED made cancelling a shipped status impossible on every default-configured
+        // database — with no out-of-the-box cure, because seeds are insert-only.
+        StatusBase canceled = service.find(StatusLevel.TASK, "CANCELED").orElseThrow();
+        assertTrue(service.available(StatusLevel.TASK).stream()
+                .anyMatch(s -> s.code.equals("CANCELED")),
+            "FINALIZED must be authorable while a seeded status lives there");
+        assertEquals(canceled.id, service.resolveForWrite(StatusLevel.TASK, "CANCELED"));
+        assertTrue(service.isTerminal(canceled),
+            "ungating it for writes must not change what the axes mean: FINALIZED is still terminal");
     }
 
     // ── Semantics through the axes, never a code ────────────────────

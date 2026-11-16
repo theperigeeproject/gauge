@@ -2,7 +2,6 @@ package pl.perigee.gauge.service;
 
 import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.Task;
-import pl.perigee.gauge.domain.ValidationException;
 import pl.perigee.gauge.repository.TaskRepository;
 import pl.perigee.gauge.support.StatusIds;
 import io.quarkus.test.junit.QuarkusTest;
@@ -219,20 +218,13 @@ class TaskServiceTest {
 
     @Test
     @Transactional
-    void testUpdateStatusToCanceledIsFlagGated() {
+    void testUpdateStatusToCanceled() {
         Task created = createTask("TL000001", "Test");
-
-        // CANCELED is seeded as FINALIZED, and FINALIZED is an EXTENDED progress level: authoring it
-        // requires gauge.status.extended-progress-levels=true. That is ADR 0020 §7's wording ("using"
-        // a status is flag-gated), and it means the 400 must name the property that would allow it —
-        // not fall back to some other status. Reads of existing CANCELED rows are unaffected.
-        ValidationException e = assertThrows(ValidationException.class,
-            () -> taskService.updateStatus(created.id(), "CANCELED"));
-        assertEquals("STATUS_NOT_AVAILABLE", e.error());
-        assertTrue(e.getMessage().contains("gauge.status.extended-progress-levels"),
-            "the refusal must name the switch: " + e.getMessage());
-        assertEquals("TODO", statusCode(taskService.findById(created.id()).orElseThrow()),
-            "a refused write must leave the row untouched");
+        Optional<Task> updated = taskService.updateStatus(created.id(), "CANCELED");
+        assertTrue(updated.isPresent());
+        assertEquals("CANCELED", statusCode(updated.get()),
+            "CANCELED ships, so it must be settable with the default configuration — "
+                + "no flag, no seeded-row surgery (ADR 0020 revision 7)");
     }
 
     // ---- 7: reorder — reassigns ordinals 0,1,2... based on provided ID list ----

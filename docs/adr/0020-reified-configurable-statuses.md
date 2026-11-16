@@ -6,8 +6,8 @@ Accepted
 Issue 0000186F. Tasklist 00001A5A. Supersedes ADR 15 for the storage model; ADR 15's
 semantics survive as seed data, not as enums.
 
-Revised six times. The first five came before completion; all six are recorded rather than edited
-away, because each one is a decision someone will otherwise re-propose:
+Revised seven times. The first five came before completion; all seven are recorded rather than
+edited away, because each one is a decision someone will otherwise re-propose:
 
 1. **IDs** — status, progress-level and attitude ids became **internal ints outside `IdProvider`**
    (§2). Earlier drafts gave them hex-8 IDs, which was wrong for reasons recorded there.
@@ -40,6 +40,14 @@ away, because each one is a decision someone will otherwise re-propose:
    without `gauge.status.extended-progress-levels=true`, which it was not before. That is this
    ADR being consistent, and the seed choice being questionable; it is filed as issue 00001A9E for
    the owner rather than quietly changed here.
+7. **`extended-progress-levels` gates `NASCENT` only — `FINALIZED` is no longer gated** (§7). This
+   is the out-of-the-box cure for what revision 6 recorded: `CANCELED` is seeded at `FINALIZED`, so
+   gating that level made a *shipped* status unwritable on every default-configured database.
+   Both alternatives required touching existing data — reseeding `CANCELED` at `FINISHED` changes
+   fresh databases only, because seeding is insert-only, so upgraded databases would silently keep
+   the broken row; raising the flag default would un-gate `NASCENT` too. Moving the gate is a code
+   change with no data migration, and it restores the property the flag was always for: gating a
+   level *nobody ships a status on*. Issue 00001A9E.
 
 
 ## Context
@@ -290,7 +298,7 @@ behaviour exactly.
 
 | Property | Default | Effect |
 |---|---|---|
-| `gauge.status.extended-progress-levels` | `false` | when false, statuses at progress level `NASCENT` or `FINALIZED` are not accepted on status create/patch. Reads unaffected |
+| `gauge.status.extended-progress-levels` | `false` | when false, statuses at progress level `NASCENT` are not accepted on status create/patch. Reads unaffected. `FINALIZED` is **not** gated — revision 7 |
 | `gauge.status.archive-enabled` | `true` | when false, statuses with attitude `ARCHIVE` cannot be retrieved, created or patched |
 | `gauge.status.trash-enabled` | `false` | as above, for `TRASH` |
 

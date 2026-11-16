@@ -255,17 +255,13 @@ class TasklistServiceTest {
 
     @Test
     @Transactional
-    void testUpdateStatusToCanceledIsFlagGated() {
+    void testUpdateStatusToCanceled() {
         Tasklist created = createTasklist("I0000001", "Test");
-
-        // CANCELED is FINALIZED, and FINALIZED is an EXTENDED progress level: authoring requires
-        // gauge.status.extended-progress-levels=true (ADR 0020 §7). See issue 00001A9E.
-        ValidationException e = assertThrows(ValidationException.class,
-            () -> tasklistService.updateStatus(created.id(), "CANCELED"));
-        assertEquals("STATUS_NOT_AVAILABLE", e.error());
-        assertTrue(e.getMessage().contains("gauge.status.extended-progress-levels"),
-            "the refusal must name the switch: " + e.getMessage());
-        assertEquals("TODO", statusCode(tasklistService.findById(created.id()).orElseThrow()));
+        Optional<Tasklist> updated = tasklistService.updateStatus(created.id(), "CANCELED");
+        assertTrue(updated.isPresent());
+        assertEquals("CANCELED", statusCode(updated.get()),
+            "CANCELED ships, so it must be settable with the default configuration "
+                + "(ADR 0020 revision 7)");
     }
 
     @Test

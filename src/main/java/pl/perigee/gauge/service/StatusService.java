@@ -56,11 +56,14 @@ import java.util.Set;
  *
  * <p><b>What "available" means.</b> A status is available when the flags currently permit touching
  * it. {@code ARCHIVE} is available only with {@code gauge.status.archive-enabled}, {@code TRASH}
- * only with {@code gauge.status.trash-enabled}, and {@code NASCENT}/{@code FINALIZED} only with
- * {@code gauge.status.extended-progress-levels}. This is the flag's own wording — it "allows using
- * (retrieving, creating, patching)" such statuses — so excluding them unconditionally would make
- * the flags pointless. Keeping archived and trashed <em>entity rows</em> out of listings is a
- * different question, answered by {@link #isReadVisible}.
+ * only with {@code gauge.status.trash-enabled}, and the experimental {@code NASCENT} progress level
+ * only with {@code gauge.status.extended-progress-levels}. This is the flag's own wording — it
+ * "allows using (retrieving, creating, patching)" such statuses — so excluding them unconditionally
+ * would make the flags pointless. Keeping archived and trashed <em>entity rows</em> out of listings
+ * is a different question, answered by {@link #isReadVisible}.
+ *
+ * <p>{@code FINALIZED} is <b>not</b> gated; see {@link #isGatedProgressLevel} for why that is a
+ * correction and not an oversight (ADR 0020 revision 7).
  */
 @ApplicationScoped
 public class StatusService {
@@ -237,11 +240,24 @@ public class StatusService {
             // an unavailable status — that would turn a configuration change into unrenderable rows.
             case "MIGRATION" -> true;
             default -> true;
-        } && (!isExtendedProgressLevel(status.progressLevel) || extendedProgressLevels);
+        } && (!isGatedProgressLevel(status.progressLevel) || extendedProgressLevels);
     }
 
-    private static boolean isExtendedProgressLevel(String progressLevel) {
-        return "NASCENT".equals(progressLevel) || "FINALIZED".equals(progressLevel);
+    /**
+     * The one progress level the flag gates: {@code NASCENT} — "not started yet", which no shipped
+     * status uses and which is genuinely experimental.
+     *
+     * <p><b>{@code FINALIZED} is deliberately NOT gated</b> (ADR 0020 revision 7). It was, and that
+     * broke a shipped status: {@code CANCELED} is seeded at {@code FINALIZED}, so once the write path
+     * started validating availability, cancelling a task or tasklist became a 400 on every database
+     * with the default configuration. The alternatives were both worse: reseeding {@code CANCELED} at
+     * {@code FINISHED} would have changed fresh databases only — upgraded ones keep the old row,
+     * because seeding is insert-only — and flipping the flag default would have un-gated
+     * {@code NASCENT} as well. Gating one level is what the flag was for; gating a level a shipped
+     * status lives on is a trap that only shows up as a refused write.
+     */
+    private static boolean isGatedProgressLevel(String progressLevel) {
+        return "NASCENT".equals(progressLevel);
     }
 
     // ── Semantics from the two axes only (§6) ───────────────────────
@@ -320,7 +336,7 @@ public class StatusService {
         return switch (status.attitudeType) {
             case "ARCHIVE" -> "attitude ARCHIVE requires gauge.status.archive-enabled=true.";
             case "TRASH" -> "attitude TRASH requires gauge.status.trash-enabled=true.";
-            default -> isExtendedProgressLevel(status.progressLevel)
+            default -> isGatedProgressLevel(status.progressLevel)
                 ? "progress level " + status.progressLevel
                     + " requires gauge.status.extended-progress-levels=true."
                 : "it is not available.";
@@ -724,7 +740,7 @@ public class StatusService {
                     + String.join(", ", progressLevels().keySet()) + "."
             );
         }
-        if (!extendedProgressLevels && isExtendedProgressLevel(progressLevel)) {
+        if (!extendedProgressLevels && isGatedProgressLevel(progressLevel)) {
             throw new ValidationException(
                 "PROGRESS_LEVEL_DISABLED",
                 "Progress level " + progressLevel
