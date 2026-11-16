@@ -13,6 +13,11 @@ public class TasklistStatusRepository {
 
     @Transactional
     public TasklistStatusDef save(TasklistStatusDef status) {
+        // Database-generated id: a fresh row has null here (see IssueStatusRepository).
+        if (status.id == null) {
+            status.persist();
+            return status;
+        }
         Optional<TasklistStatusDef> existing = TasklistStatusDef.findByIdOptional(status.id);
         if (existing.isPresent()) {
             TasklistStatusDef managed = existing.get();

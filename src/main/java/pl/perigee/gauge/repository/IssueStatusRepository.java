@@ -20,6 +20,12 @@ public class IssueStatusRepository {
 
     @Transactional
     public IssueStatusDef save(IssueStatusDef status) {
+        // The id is database-generated, so a fresh row has null here and findByIdOptional(null)
+        // would throw. (Business entities never hit this: IdProvider pre-assigns their hex-8 ids.)
+        if (status.id == null) {
+            status.persist();
+            return status;
+        }
         Optional<IssueStatusDef> existing = IssueStatusDef.findByIdOptional(status.id);
         if (existing.isPresent()) {
             IssueStatusDef managed = existing.get();

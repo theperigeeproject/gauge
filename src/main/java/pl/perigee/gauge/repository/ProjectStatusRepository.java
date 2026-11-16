@@ -13,6 +13,11 @@ public class ProjectStatusRepository {
 
     @Transactional
     public ProjectStatusDef save(ProjectStatusDef status) {
+        // Database-generated id: a fresh row has null here (see IssueStatusRepository).
+        if (status.id == null) {
+            status.persist();
+            return status;
+        }
         Optional<ProjectStatusDef> existing = ProjectStatusDef.findByIdOptional(status.id);
         if (existing.isPresent()) {
             ProjectStatusDef managed = existing.get();
