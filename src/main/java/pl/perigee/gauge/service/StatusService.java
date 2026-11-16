@@ -544,7 +544,7 @@ public class StatusService {
                 throw new ConflictException(
                     "STATUS_IN_USE",
                     "Status '" + status.code + "' is used by " + referenced + " " + level.wire
-                        + " row(s). Retry with ?policy=prevent|remove|migrate (and ?migrateTo=<code>)."
+                        + " row(s). Retry with " + usablePolicies(level) + "."
                 );
             }
             switch (policy) {
@@ -591,6 +591,20 @@ public class StatusService {
         deleteRow(level, status);
         refreshAfterWrite();
         LOG.infof("Removed %s status '%s'", level.wire, status.code);
+    }
+
+    /**
+     * The policies a caller can actually send for this level, for the {@code STATUS_IN_USE} message.
+     *
+     * <p>Projects do not offer {@code remove}: deleting project rows from a status removal would
+     * bypass {@code removalLock} and orphan their issues, tasklists, tasks and subprojects, so
+     * {@code StatusReferenceScanner.removeAll} refuses it. Advertising a policy that is guaranteed
+     * to fail is exactly the "message must tell the caller what to send" contract going wrong.
+     */
+    private static String usablePolicies(StatusLevel level) {
+        return level == StatusLevel.PROJECT
+            ? "?policy=prevent|migrate (and ?migrateTo=<code>)"
+            : "?policy=prevent|remove|migrate (and ?migrateTo=<code>)";
     }
 
     /** Looks a status up regardless of whether the flags currently make it available. */
