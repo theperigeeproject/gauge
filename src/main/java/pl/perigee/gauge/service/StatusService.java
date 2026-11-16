@@ -6,6 +6,7 @@ import pl.perigee.gauge.domain.IssueStatusDef;
 import pl.perigee.gauge.domain.ProgressLevelDef;
 import pl.perigee.gauge.domain.ProjectStatusDef;
 import pl.perigee.gauge.domain.StatusBase;
+import pl.perigee.gauge.domain.StatusBearing;
 import pl.perigee.gauge.domain.StatusLevel;
 import pl.perigee.gauge.domain.TaskStatusDef;
 import pl.perigee.gauge.domain.TasklistStatusDef;
@@ -28,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The single owner of status data. Nothing outside this class may query the four status tables or
@@ -343,6 +345,81 @@ public class StatusService {
     /** True when this row's status was never brought over from the legacy code column. */
     public boolean isUnmigrated(Integer id) {
         return id == null;
+    }
+
+    // ── Entity-level helpers (increment 4 of 0000186F) ──────────────
+    //
+    // These exist so that no mapper, service or template needs its own level constant, its own
+    // null-vs-id reasoning, or a repository lookup. Every one of them is a thin composition of
+    // byId/precedence — the translation stays here (ADR 0020 §2/§4).
+
+    /** The wire code of the status an entity carries. A null status id reads as NEEDS_MIGRATION. */
+    public String codeOf(StatusLevel level, StatusBearing entity) {
+        return codeFor(level, entity.statusId());
+    }
+
+    /** The status row an entity carries, resolved through the null-id fallback. */
+    public StatusBase of(StatusLevel level, StatusBearing entity) {
+        return byId(level, entity.statusId());
+    }
+
+    /**
+     * Sort key for a status id. The <b>only</b> ordering source — never a code literal (ADR 0020 §6),
+     * so renaming a status cannot reorder anything by accident.
+     */
+    public int precedenceOf(StatusLevel level, Integer statusId) {
+        return byId(level, statusId).precedenceValue;
+    }
+
+    /**
+     * The status a newly created row gets (ADR 0020 §13): the available status with the lowest
+     * {@code precedenceValue}.
+     *
+     * <p>The MIGRATION status is skipped. It is by definition "this row was never given a status",
+     * which is the one thing a fresh row is not — and it is seeded last precisely so it never wins
+     * by precedence anyway. Skipping it makes that structural rather than incidental.
+     *
+     * @throws IllegalStateException when the level has no available status at all
+     */
+    public Integer defaultStatusId(StatusLevel level) {
+        StatusBase best = null;
+        for (StatusBase candidate : available(level)) {
+            if (MIGRATION_ATTITUDE.equals(candidate.attitudeType)) {
+                continue;
+            }
+            if (best == null || candidate.precedenceValue < best.precedenceValue) {
+                best = candidate;
+            }
+        }
+        if (best == null) {
+            throw new IllegalStateException(
+                "No available " + level.wire + " status exists, so a new row has no default status. "
+                    + "Every seeded database has one; a level emptied by hand is a broken database.");
+        }
+        return best.id;
+    }
+
+    /**
+     * Filter predicate for an already-resolved status set.
+     *
+     * <p>Matched <b>by identity</b>, which quietly does the right thing for unmigrated rows: a null
+     * status id resolves to the level's MIGRATION status, so {@code ?status=NEEDS_MIGRATION} returns
+     * exactly the unmigrated rows, while any other filter excludes them. Comparing raw codes instead
+     * would return nothing for {@code NEEDS_MIGRATION} — the rows are right there in the list.
+     *
+     * @param wanted resolved status rows; null or empty means "no filter"
+     */
+    public boolean matchesFilter(StatusLevel level, Integer statusId, Set<StatusBase> wanted) {
+        if (wanted == null || wanted.isEmpty()) {
+            return true;
+        }
+        StatusBase row = byId(level, statusId);
+        for (StatusBase candidate : wanted) {
+            if (candidate.id != null && candidate.id.equals(row.id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
